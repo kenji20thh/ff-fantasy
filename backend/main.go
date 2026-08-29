@@ -9,12 +9,18 @@ import (
 )
 
 func main() {
-	conn, err := pgx.Connect(context.background(), "postgres://postgres://localhost/ff_fantasy")
+	conn, err := pgx.Connect(context.Background(), "postgres://postgres://localhost/ff_fantasy")
 	if err != nil {
 		fmt.Println("Error connecting to the database:", err)
 		return
 	}
 	defer conn.Close(context.Background())
+
+	err = conn.Ping(context.Background())
+	if err != nil {
+		fmt.Println("Error pinging the database:", err)
+		return
+	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "FF Fantasy API")
