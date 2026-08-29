@@ -34,6 +34,15 @@ func main() {
 		fmt.Fprintln(w, "FF Fantasy API")
 	})
 
+	http.HandleFunc("/api/teams", func(w http.ResponseWriter, r * http.Request) {
+		rows, err := conn.Query(context.Background(), "SELECT id, name FROM teams")
+		if err != nil {
+			http.Error(w, "Failed to get teams", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+	}))
+
 	fmt.Println("Server running on http://localhost:8080")
 
 	err = http.ListenAndServe(":8080", nil)
