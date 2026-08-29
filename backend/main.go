@@ -11,7 +11,7 @@ import (
 func main() {
 	conn, err := pgx.Connect(
 		context.Background(),
-		"postgres://kenji20th@localhost:5432/ff_fantasy",
+		"postgres://kenji20th:MrR@b@!@localhost:5432/ff_fantasy",
 	)
 	if err != nil {
 		fmt.Println("Error connecting to the database:", err)
