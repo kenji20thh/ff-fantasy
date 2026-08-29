@@ -8,6 +8,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type Team struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
 func main() {
 	conn, err := pgx.Connect(
 		context.Background(),
