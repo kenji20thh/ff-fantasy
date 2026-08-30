@@ -73,6 +73,11 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 		"SELECT id, team_id FROM players WHERE id = ANY($1)",
 		request.PlayerIDs,
 	)
+	if err != nil {
+		http.Error(w, "Failed to get players", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(request)
