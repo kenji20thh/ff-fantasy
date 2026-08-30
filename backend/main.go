@@ -134,8 +134,10 @@ func main() {
 		var fanatasyTeamID int
 		err = conn.QueryRow(
 			context.Background(),
-			"INSERT INTO fantasy_teams (user_id) VALUES ($1) RETURNING Id"
-		)
+			"INSERT INTO fantasy_teams (user_id) VALUES ($1) RETURNING Id",
+			request.UserID,
+
+		).Scan(&fanatasyTeamID)
 	)
 
 	fmt.Println("Server running on http://localhost:8080")
