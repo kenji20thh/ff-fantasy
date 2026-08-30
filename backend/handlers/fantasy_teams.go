@@ -3,9 +3,11 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"ff-fantasy/models"
 )
@@ -42,12 +44,13 @@ func (h *FantasyTeamHandler) CreateFantasyTeam(w http.ResponseWriter, r *http.Re
 	).Scan(&fantasyTeam.ID, &fantasyTeam.UserID)
 
 	if err != nil {
-		var pgErr *pgx.PgError
+		var pgErr *pgconn.PgError
 
-		if error.As(err, &pgErr) && pgErr.Code == "23505" {
-			http.Error(w, "You already has a fantasy team", http.StatusBadRequest)
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			http.Error(w, "You already have a fantasy team", http.StatusConflict)
 			return
 		}
+
 		http.Error(w, "Failed to create fantasy team", http.StatusInternalServerError)
 		return
 	}
