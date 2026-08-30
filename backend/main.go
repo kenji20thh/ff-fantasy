@@ -139,6 +139,7 @@ func main() {
 		).Scan(&fanatasyTeamID)
 
 		if err != nil {
+			fmt.Println("Error creating fantasy team:", err)
 			http.Error(w, "Failed to create fantasy team", http.StatusInternalServerError)
 			return
 		}
