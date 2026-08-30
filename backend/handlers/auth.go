@@ -74,3 +74,59 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	json.NewEncoder(w).Encode(user)
 }
+
+func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var request struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+
+	if err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if request.Email == "" || request.Password == "" {
+		http.Error(w, "Email and password are required", http.StatusBadRequest)
+		return
+	}
+
+	var user models.User
+	var passwordHash string
+
+	err = h.DB.QueryRow(
+		context.Background(),
+		"SELECT id, username, password_hash, FROM users WHERE email = $1",
+		request.Email,
+	).Scan(
+		&user.ID,
+		&user.Username,
+		&passwordHash,
+		&user.Email,
+	)
+
+	if err != nil {
+		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		return
+	}
+
+	err = bcrypt.CompareHashAndPassword(
+		[]byte(passwordHash),
+		[]byte(request.Password),
+	)
+
+	if err != nil {
+		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
+}
