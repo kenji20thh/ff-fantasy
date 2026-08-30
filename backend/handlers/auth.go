@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthHandler struct {
@@ -33,4 +34,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing required fields", http.StatusBadRequest)
 		return
 	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword(
+		[]byte(request.Password),
+		bcrypt.DefaultCost,
+	)
 }
