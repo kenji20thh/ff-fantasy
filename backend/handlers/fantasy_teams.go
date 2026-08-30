@@ -58,6 +58,17 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 
 	fantasyTeamID := r.PathValue("id")
 
+	cookie, err := r.Cookie("session_id")
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID, exists := h.Sessions.GetUserID(cookie.Value)
+	if !exists {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	var request struct {
 		PlayerIDs []int `json:"player_ids"`
 	}
