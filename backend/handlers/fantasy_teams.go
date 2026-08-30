@@ -68,6 +68,12 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	rows, err := h.DB.Query(
+		context.Background(),
+		"SELECT id, team_id FROM players WHERE id = ANY($1)",
+		request.PlayerIDs,
+	)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(request)
 }
