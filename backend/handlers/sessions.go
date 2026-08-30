@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"net/http"
 	"sync"
 )
 
@@ -33,4 +34,22 @@ func (s *sessionStore) Create(userID int) (string, error) {
 
 	return sessionID, nil
 
+}
+
+func (s *sessionStore) GetUserID(sessionID string) (int, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	userID, exists := s.sessions[sessionID]
+	return userID, exists
+}
+
+func (s *sessionStore) SetCookie(w http.ResponseWriter, sessionID string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_id",
+		Value:    sessionID,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+	})
 }
