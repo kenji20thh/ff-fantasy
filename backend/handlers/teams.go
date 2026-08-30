@@ -15,4 +15,9 @@ func (h *teamHandler) GetTeams() (w, http.ResponseWriter, r *http.Request) {
 		context.Background(),
 		"SELECT id, name FROM teams"
 	)
+	if err != nil {
+		http.Error(w, "Failed to get teams", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
 }
