@@ -213,3 +213,85 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 		"player_ids":      request.PlayerIDs,
 	})
 }
+
+func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cookie, err := r.Cookie("session_id")
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, exists := h.Sessions.GetUserID(cookie.Value)
+	if !exists {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	fantasyTeamID := r.PathValue("id")
+
+	var fantasyTeam models.FantasyTeam
+
+	err = h.DB.QueryRow(
+		context.Background(),
+		"SELECT id, user_id FROM fantasy_teams WHERE id = $1",
+		fantasyTeamID,
+	).Scan(&fantasyTeam.ID, &fantasyTeam.UserID)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			http.Error(w, "Fantasy team not found", http.StatusNotFound)
+			return
+		}
+
+		http.Error(w, "Failed to get fantasy team", http.StatusInternalServerError)
+		return
+	}
+
+	if fantasyTeam.UserID != userID {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var playerIDs []int
+
+	rows, err := h.DB.Query(
+		context.Background(),
+		"SELECT player_id FROM fantasy_team_players WHERE fantasy_team_id = $1",
+		fantasyTeamID,
+	)
+	if err != nil {
+		http.Error(w, "Failed to get selected players", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var playerID int
+
+		err := rows.Scan(&playerID)
+		if err != nil {
+			http.Error(w, "Failed to read player", http.StatusInternalServerError)
+			return
+		}
+
+		playerIDs = append(playerIDs, playerID)
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Error reading players", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":         fantasyTeam.ID,
+		"user_id":    fantasyTeam.UserID,
+		"player_ids": playerIDs,
+	})
+}

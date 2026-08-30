@@ -38,6 +38,7 @@ func main() {
 	http.HandleFunc("/api/teams/{id}/players", teamHandler.GetPlayers)
 
 	http.HandleFunc("/api/fantasy-teams", fantasyTeamHandler.CreateFantasyTeam)
+	http.HandleFunc("/api/fantasy-teams/{id}", fantasyTeamHandler.GetFantasyTeam)
 	http.HandleFunc("/api/fantasy-teams/{id}/players", fantasyTeamHandler.SelectPlayers)
 
 	http.HandleFunc("/api/register", authHandler.Register)
