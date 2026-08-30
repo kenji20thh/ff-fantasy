@@ -76,7 +76,7 @@ func main() {
 		json.NewEncoder(w).Encode(teams)
 	})
 
-	http.HandleFunc("/api/teams/1/players", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/api/teams/{id}/players", func(w http.ResponseWriter, r *http.Request) {
 		rows, err := conn.Query(
 			context.Background(),
 			"SELECT id, nickname FROM players WHERE team_id = $1",
