@@ -37,6 +37,7 @@ func main() {
 	http.HandleFunc("/api/fantasy-teams/{id}/players", fantasyTeamHandler.SelectPlayers)
 
 	http.HandleFunc("/api/register", authHandler.Register)
+	http.HandleFunc("/api/login", authHandler.Login)
 
 	fmt.Println("Server running on http://localhost:8080")
 
