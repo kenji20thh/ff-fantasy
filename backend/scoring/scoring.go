@@ -1,5 +1,11 @@
 package scoring
 
+type PlayerScore struct {
+	PlayerID  int
+	Points    int
+	IsCaptain bool
+}
+
 func PlacementPoints(placement int) int {
 	switch placement {
 	case 1:
@@ -38,4 +44,20 @@ func PlayerRoomPoints(kills, assists int, firstBlood bool, placement int) int {
 	points += PlacementPoints(placement)
 
 	return points
+}
+
+func FantasyTeamPoints(scores []PlayerScore) int {
+	total := 0
+
+	for _, score := range scores {
+		points := score.Points
+
+		if score.IsCaptain {
+			points *= 2
+		}
+
+		total += points
+	}
+
+	return total
 }

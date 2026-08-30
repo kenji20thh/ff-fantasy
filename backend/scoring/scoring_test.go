@@ -42,3 +42,18 @@ func TestPlacementPoints(t *testing.T) {
 		}
 	}
 }
+
+func TestFantasyTeamPoints(t *testing.T) {
+	scores := []PlayerScore{
+		{PlayerID: 1, Points: 57, IsCaptain: true},
+		{PlayerID: 2, Points: 30, IsCaptain: false},
+		{PlayerID: 3, Points: 42, IsCaptain: false},
+		{PlayerID: 4, Points: 25, IsCaptain: false},
+	}
+
+	got := FantasyTeamPoints(scores)
+
+	if got != 211 {
+		t.Fatalf("expected 211 points, got %d", got)
+	}
+}
