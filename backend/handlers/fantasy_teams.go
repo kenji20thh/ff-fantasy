@@ -68,6 +68,17 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	seen := make(map[int]bool)
+
+	for _, playerID := range request.PlayerIDs {
+		if seen[playerID] {
+			http.Error(w, "Players must be 4 different players", http.StatusBadRequest)
+			return
+		}
+
+		seen[playerID] = true
+	}
+
 	rows, err := h.DB.Query(
 		context.Background(),
 		"SELECT id, team_id FROM players WHERE id = ANY($1)",
