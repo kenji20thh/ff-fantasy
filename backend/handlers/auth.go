@@ -1,18 +1,22 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
-	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
+
+	"ff-fantasy/models"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type AuthHandler struct {
 	DB *pgx.Conn
 }
 
-func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -20,7 +24,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	var request struct {
 		Username string `json:"username"`
-		EMail    string `json:"email"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 
@@ -30,8 +34,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if request.Username == "" || request.EMail == "" || request.Password == "" {
-		http.Error(w, "Missing required fields", http.StatusBadRequest)
+	if request.Username == "" || request.Email == "" || request.Password == "" {
+		http.Error(w, "Username, email and password are required", http.StatusBadRequest)
 		return
 	}
 
@@ -39,4 +43,34 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		[]byte(request.Password),
 		bcrypt.DefaultCost,
 	)
+	if err != nil {
+		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+		return
+	}
+
+	var user models.User
+
+	err = h.DB.QueryRow(
+		context.Background(),
+		`INSERT INTO users (username, email, password_hash)
+		 VALUES ($1, $2, $3)
+		 RETURNING id, username, email`,
+		request.Username,
+		request.Email,
+		string(passwordHash),
+	).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+	)
+
+	if err != nil {
+		http.Error(w, "Failed to create user", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+
+	json.NewEncoder(w).Encode(user)
 }
