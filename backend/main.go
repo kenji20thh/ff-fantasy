@@ -22,11 +22,12 @@ func main() {
 		DB: conn,
 	}
 
-	fantasyTeamHandler := &handlers.FantasyTeamHandler{
-		DB: conn,
-	}
-
 	sessionStore := handlers.NewSessionStore()
+
+	fantasyTeamHandler := &handlers.FantasyTeamHandler{
+		DB:       conn,
+		Sessions: sessionStore,
+	}
 
 	authHandler := &handlers.AuthHandler{
 		DB:       conn,
