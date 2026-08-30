@@ -26,8 +26,11 @@ func main() {
 		DB: conn,
 	}
 
+	sessionStore := handlers.NewSessionStore()
+
 	authHandler := &handlers.AuthHandler{
-		DB: conn,
+		DB:       conn,
+		Sessions: sessionStore,
 	}
 
 	http.HandleFunc("/api/teams", teamHandler.GetTeams)
