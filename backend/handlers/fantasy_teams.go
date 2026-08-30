@@ -21,7 +21,7 @@ func (h *FantasyTeamHandler) CreateFantasyTeam(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	cookie, err := r.Cookie("session_token")
+	cookie, err := r.Cookie("session_id")
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
