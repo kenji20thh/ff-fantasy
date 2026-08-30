@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"context"
+	"ff-fantasy/models"
+
+	"net/http"
 
 	"github.com/jackc/pgx/v5"
-	"net/http"
 )
 
 type teamHandler struct {
@@ -19,5 +21,27 @@ func (h *teamHandler) GetTeams() (w, http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to get teams", http.StatusInternalServerError)
 		return
 	}
+
 	defer rows.Close()
+
+	teams := []models.Team{}
+
+	for rows.Next() {
+		var team models.Team
+		err := rows.Scan(&team.ID, &team.Name)
+		if err != nil {
+			http.Error(w, "Failed to scan team", http.StatusInternalServerError)
+			return
+		}
+		teams = append(teams, team)
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Error reading rows", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(teams)
+
 }
