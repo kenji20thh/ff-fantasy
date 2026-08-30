@@ -24,3 +24,7 @@ func Connect() (*pgx.Conn, error) {
 
 	return conn, nil
 }
+
+func Context() context.Context {
+	return context.Background()
+}
