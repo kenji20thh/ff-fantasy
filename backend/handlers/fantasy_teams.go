@@ -441,15 +441,15 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 	rows, err := h.DB.Query(
 		context.Background(),
 		`SELECT
-			ftp.player_id,
-			prs.kills,
-			prs.assists,
-			prs.first_blood,
-			prs.placement
-		FROM fantasy_team_players ftp
-		LEFT JOIN player_room_stats prs
-			ON ftp.player_id = prs.player_id
-		WHERE ftp.fantasy_team_id = $1`,
+		ftp.player_id,
+		COALESCE(prs.kills, 0),
+		COALESCE(prs.assists, 0),
+		COALESCE(prs.first_blood, false),
+		COALESCE(prs.placement, 0)
+	FROM fantasy_team_players ftp
+	LEFT JOIN player_room_stats prs
+		ON ftp.player_id = prs.player_id
+	WHERE ftp.fantasy_team_id = $1`,
 		fantasyTeamID,
 	)
 
