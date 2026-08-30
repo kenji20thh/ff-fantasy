@@ -21,13 +21,15 @@ func (h *FantasyTeamHandler) CreateFantasyTeam(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	var request struct {
-		UserID int `json:"user_id"`
+	cookie, err := r.Cookie("session_token")
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
 	}
 
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+	userID, exists := h.Sessions.GetUserID(cookie.Value)
+	if !exists {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -36,7 +38,7 @@ func (h *FantasyTeamHandler) CreateFantasyTeam(w http.ResponseWriter, r *http.Re
 	err = h.DB.QueryRow(
 		context.Background(),
 		"INSERT INTO fantasy_teams (user_id) VALUES ($1) RETURNING id, user_id",
-		request.UserID,
+		userID,
 	).Scan(&fantasyTeam.ID, &fantasyTeam.UserID)
 
 	if err != nil {
