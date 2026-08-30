@@ -26,3 +26,16 @@ func PlacementPoints(placement int) int {
 		return 0
 	}
 }
+
+func PlayerRoomPoints(kills, assists int, firstBlood bool, placement int) int {
+	points := kills * 10
+	points += assists * 5
+
+	if firstBlood {
+		points += 5
+	}
+
+	points += PlacementPoints(placement)
+
+	return points
+}
