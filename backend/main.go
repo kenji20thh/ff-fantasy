@@ -34,6 +34,10 @@ func main() {
 		Sessions: sessionStore,
 	}
 
+	adminTeamHandler := &handlers.AdminTeamHandler{
+		DB: conn,
+	}
+
 	http.HandleFunc("/api/teams", teamHandler.GetTeams)
 	http.HandleFunc("/api/teams/{id}/players", teamHandler.GetPlayers)
 
@@ -46,6 +50,15 @@ func main() {
 	http.HandleFunc("/api/register", authHandler.Register)
 	http.HandleFunc("/api/login", authHandler.Login)
 	http.HandleFunc("/api/me", authHandler.Me)
+
+	http.HandleFunc(
+		"/api/admin/teams",
+		handlers.RequireAdmin(
+			conn,
+			sessionStore,
+			adminTeamHandler.CreateTeam,
+		),
+	)
 
 	fmt.Println("Server running on http://localhost:8080")
 
