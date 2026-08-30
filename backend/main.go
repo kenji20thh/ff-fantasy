@@ -118,6 +118,26 @@ func main() {
 		json.NewEncoder(w).Encode(players)
 	})
 
+	http.HandleFunc("api/fantasy-teams", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var request struct {
+			UserID int `json:"user_id"`
+		}
+		err := json.NewDecoder(r.Body).Decode(&request)
+		if err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		} 
+		var fanatasyTeamID int
+		err = conn.QueryRow(
+			context.Background(),
+			"INSERT INTO fantasy_teams (user_id) VALUES ($1) RETURNING Id"
+		)
+	)
+
 	fmt.Println("Server running on http://localhost:8080")
 
 	err = http.ListenAndServe(":8080", nil)
