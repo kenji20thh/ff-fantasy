@@ -76,8 +76,8 @@ func main() {
 		json.NewEncoder(w).Encode(teams)
 	})
 
-	http.HandleFunc("/api/teams/1/players", func(w http.ResponseWriter, r *http.Response) {
-		rows.err := conn.Query(
+	http.HandleFunc("/api/teams/1/players", func(w http.ResponseWriter, r *http.Request) {
+		rows, err := conn.Query(
 			context.Background(),
 			"SELECT id, nickname FROM players WHERE team_id = $1",
 			1,
@@ -88,13 +88,16 @@ func main() {
 		}
 		defer rows.Close()
 
-		var players []struct {
+		type Player struct {
 			ID       int    `json:"id"`
 			Nickname string `json:"nickname"`
 		}
 
+		players := []Player{}
+
 		for rows.Next() {
 			var player Player
+
 			err := rows.Scan(&player.ID, &player.Nickname)
 			if err != nil {
 				http.Error(w, "Failed to read player", http.StatusInternalServerError)
@@ -108,9 +111,9 @@ func main() {
 			http.Error(w, "Error reading rows", http.StatusInternalServerError)
 			return
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(players)
-
 	})
 
 	fmt.Println("Server running on http://localhost:8080")
