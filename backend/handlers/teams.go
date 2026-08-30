@@ -47,3 +47,44 @@ func (h *TeamHandler) GetTeams(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(teams)
 }
+
+func (h *TeamHandler) GetPlayers(w http.ResponseWriter, r *http.Request) {
+	teamID := r.PathValue("id")
+
+	rows, err := h.DB.Query(
+		context.Background(),
+		"SELECT id, team_id, nickname FROM players WHERE team_id = $1",
+		teamID,
+	)
+	if err != nil {
+		http.Error(w, "Failed to get players", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	players := []models.Player{}
+
+	for rows.Next() {
+		var player models.Player
+
+		err := rows.Scan(
+			&player.ID,
+			&player.TeamID,
+			&player.Nickname,
+		)
+		if err != nil {
+			http.Error(w, "Failed to read player", http.StatusInternalServerError)
+			return
+		}
+
+		players = append(players, player)
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Error reading rows", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(players)
+}
