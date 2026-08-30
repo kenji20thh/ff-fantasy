@@ -42,6 +42,12 @@ func (h *FantasyTeamHandler) CreateFantasyTeam(w http.ResponseWriter, r *http.Re
 	).Scan(&fantasyTeam.ID, &fantasyTeam.UserID)
 
 	if err != nil {
+		var pgErr *pgx.PgError
+
+		if error.As(err, &pgErr) && pgErr.Code == "23505" {
+			http.Error(w, "You already has a fantasy team", http.StatusBadRequest)
+			return
+		}
 		http.Error(w, "Failed to create fantasy team", http.StatusInternalServerError)
 		return
 	}
