@@ -295,3 +295,100 @@ func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Reque
 		"player_ids": playerIDs,
 	})
 }
+
+func (h *FantasyTeamHandler) SetCaptain(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fantasyTeamID := r.PathValue("id")
+
+	cookie, err := r.Cookie("session_id")
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, exists := h.Sessions.GetUserID(cookie.Value)
+	if !exists {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var request struct {
+		PlayerID int `json:"player_id"`
+	}
+
+	err = json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	var teamOwnerID int
+
+	err = h.DB.QueryRow(
+		context.Background(),
+		"SELECT user_id FROM fantasy_teams WHERE id = $1",
+		fantasyTeamID,
+	).Scan(&teamOwnerID)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			http.Error(w, "Fantasy team not found", http.StatusNotFound)
+			return
+		}
+
+		http.Error(w, "Failed to find fantasy team", http.StatusInternalServerError)
+		return
+	}
+
+	if teamOwnerID != userID {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var playerExists bool
+
+	err = h.DB.QueryRow(
+		context.Background(),
+		`SELECT EXISTS(
+			SELECT 1
+			FROM fantasy_team_players
+			WHERE fantasy_team_id = $1
+			AND player_id = $2
+		)`,
+		fantasyTeamID,
+		request.PlayerID,
+	).Scan(&playerExists)
+
+	if err != nil {
+		http.Error(w, "Failed to check player", http.StatusInternalServerError)
+		return
+	}
+
+	if !playerExists {
+		http.Error(w, "Player is not in your fantasy team", http.StatusBadRequest)
+		return
+	}
+
+	_, err = h.DB.Exec(
+		context.Background(),
+		"UPDATE fantasy_teams SET captain_player_id = $1 WHERE id = $2",
+		request.PlayerID,
+		fantasyTeamID,
+	)
+
+	if err != nil {
+		http.Error(w, "Failed to set captain", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"fantasy_team_id":   fantasyTeamID,
+		"captain_player_id": request.PlayerID,
+	})
+}
