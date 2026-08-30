@@ -79,6 +79,38 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 	}
 	defer rows.Close()
 
+	teamIDs := make(map[int]bool)
+	playerCount := 0
+
+	for rows.Next() {
+		var playerID int
+		var teamID int
+
+		err := rows.Scan(&playerID, &teamID)
+		if err != nil {
+			http.Error(w, "Failed to read player", http.StatusInternalServerError)
+			return
+		}
+
+		playerCount++
+		teamIDs[teamID] = true
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Error reading rows", http.StatusInternalServerError)
+		return
+	}
+
+	if playerCount != 4 {
+		http.Error(w, "Some players do not exist", http.StatusBadRequest)
+		return
+	}
+
+	if len(teamIDs) != 4 {
+		http.Error(w, "Players must be from different teams", http.StatusBadRequest)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(request)
 }
