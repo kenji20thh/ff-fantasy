@@ -454,6 +454,7 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 	)
 
 	if err != nil {
+
 		http.Error(w, "Failed to get player statistics", http.StatusInternalServerError)
 		return
 	}
@@ -496,6 +497,7 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 	}
 
 	if err := rows.Err(); err != nil {
+
 		http.Error(w, "Error reading player statistics", http.StatusInternalServerError)
 		return
 	}
