@@ -73,7 +73,7 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 		PlayerIDs []int `json:"player_ids"`
 	}
 
-	err := json.NewDecoder(r.Body).Decode(&request)
+	err = json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
@@ -95,21 +95,26 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 		seen[playerID] = true
 	}
 
-	var teamExists bool
+	var teamOwnerID int
 
 	err = h.DB.QueryRow(
 		context.Background(),
-		"SELECT EXISTS(SELECT 1 FROM fantasy_teams WHERE id = $1)",
+		"SELECT user_id FROM fantasy_teams WHERE id = $1",
 		fantasyTeamID,
-	).Scan(&teamExists)
+	).Scan(&teamOwnerID)
 
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			http.Error(w, "Fantasy team not found", http.StatusNotFound)
+			return
+		}
+
 		http.Error(w, "Failed to check fantasy team", http.StatusInternalServerError)
 		return
 	}
 
-	if !teamExists {
-		http.Error(w, "Fantasy team not found", http.StatusNotFound)
+	if teamOwnerID != userID {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
