@@ -87,7 +87,6 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := json.NewDecoder(r.Body).Decode(&request)
-
 	if err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
@@ -103,13 +102,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	err = h.DB.QueryRow(
 		context.Background(),
-		"SELECT id, username, password_hash, FROM users WHERE email = $1",
+		"SELECT id, username, email, password_hash FROM users WHERE email = $1",
 		request.Email,
 	).Scan(
 		&user.ID,
 		&user.Username,
-		&passwordHash,
 		&user.Email,
+		&passwordHash,
 	)
 
 	if err != nil {
@@ -121,7 +120,6 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		[]byte(passwordHash),
 		[]byte(request.Password),
 	)
-
 	if err != nil {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
