@@ -27,9 +27,19 @@ func main() {
 
 	err = conn.Ping(context.Background())
 	if err != nil {
-		fmt.Println("Error pinging the database:", err)
+		fmt.Println("Database ping failed:", err)
 		return
 	}
+
+	var dbName string
+	err = conn.QueryRow(context.Background(), "SELECT current_database()").Scan(&dbName)
+	if err != nil {
+		fmt.Println("Error retrieving database name:", err)
+		return
+	}
+	fmt.Println("Connected to PostgreSQL database:", dbName)
+
+	fmt.Println("Connected to PostgreSQL")
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "FF Fantasy API")
@@ -47,15 +57,35 @@ func main() {
 
 		for rows.Next() {
 			var team Team
+
 			err := rows.Scan(&team.ID, &team.Name)
 			if err != nil {
-				http.Error(w, "Failed to scan team", http.StatusInternalServerError)
+				http.Error(w, "Failed to read team", http.StatusInternalServerError)
 				return
 			}
+
 			teams = append(teams, team)
 		}
+
+		if err := rows.Err(); err != nil {
+			http.Error(w, "Error reading rows", http.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(teams)
+	})
+
+	http.HandleFunc("/api/teams/1/players", func(w http.ResponseWriter, r *http.Response) {
+		rows.err := conn.Query(
+			context.Background(),
+			"SELECT id, nickname FROM players WHERE team_id = $1",
+			1,
+		)
+		if err != nil {
+			http.Error(w, "Failed to get players", http.StatusInternalServerError)
+			return
+		}
 	})
 
 	fmt.Println("Server running on http://localhost:8080")
