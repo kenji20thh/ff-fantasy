@@ -2,37 +2,40 @@ package handlers
 
 import (
 	"context"
-	"ff-fantasy/models"
-
+	"encoding/json"
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
+
+	"ff-fantasy/models"
 )
 
-type teamHandler struct {
+type TeamHandler struct {
 	DB *pgx.Conn
 }
-func (h *teamHandler) GetTeams() (w, http.ResponseWriter, r *http.Request) {
-	rows, err := h.DB;Query(
+
+func (h *TeamHandler) GetTeams(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.DB.Query(
 		context.Background(),
-		"SELECT id, name FROM teams"
+		"SELECT id, name FROM teams",
 	)
 	if err != nil {
 		http.Error(w, "Failed to get teams", http.StatusInternalServerError)
 		return
 	}
-
 	defer rows.Close()
 
 	teams := []models.Team{}
 
 	for rows.Next() {
 		var team models.Team
+
 		err := rows.Scan(&team.ID, &team.Name)
 		if err != nil {
-			http.Error(w, "Failed to scan team", http.StatusInternalServerError)
+			http.Error(w, "Failed to read team", http.StatusInternalServerError)
 			return
 		}
+
 		teams = append(teams, team)
 	}
 
@@ -43,5 +46,4 @@ func (h *teamHandler) GetTeams() (w, http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(teams)
-
 }
