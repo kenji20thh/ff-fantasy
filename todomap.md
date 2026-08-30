@@ -20,7 +20,7 @@
 - ✅ Create fantasy team
 - ✅ Select 4 players
 - ✅ Change selected players
-- ⬜ User authentication
+- ✅ User authentication
 - ⬜ Admin API
 - ⬜ Statistics API
 - ⬜ Scoring API
@@ -42,9 +42,9 @@
 - ⬜ Manage tournament data
 
 ## 6. Scoring
-- ⬜ Define scoring system
-- ⬜ Calculate player points
-- ⬜ Calculate fantasy-team points
+- ✅ Define scoring system
+- ✅ Calculate player points
+- ✅ Calculate fantasy-team points
 - ⬜ Update leaderboard
 
 ## 7. Frontend
