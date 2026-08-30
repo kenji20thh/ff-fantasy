@@ -7,18 +7,18 @@ import (
 	"sync"
 )
 
-type sessionStore struct {
-	sessions map[string]int // sessionID -> userID
+type SessionStore struct {
+	sessions map[string]int
 	mu       sync.RWMutex
 }
 
-func newSessionStore() *sessionStore {
-	return &sessionStore{
+func NewSessionStore() *SessionStore {
+	return &SessionStore{
 		sessions: make(map[string]int),
 	}
 }
 
-func (s *sessionStore) Create(userID int) (string, error) {
+func (s *SessionStore) Create(userID int) (string, error) {
 	bytes := make([]byte, 32)
 
 	_, err := rand.Read(bytes)
@@ -33,18 +33,18 @@ func (s *sessionStore) Create(userID int) (string, error) {
 	s.mu.Unlock()
 
 	return sessionID, nil
-
 }
 
-func (s *sessionStore) GetUserID(sessionID string) (int, bool) {
+func (s *SessionStore) GetUserID(sessionID string) (int, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	userID, exists := s.sessions[sessionID]
+
 	return userID, exists
 }
 
-func (s *sessionStore) SetCookie(w http.ResponseWriter, sessionID string) {
+func (s *SessionStore) SetCookie(w http.ResponseWriter, sessionID string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_id",
 		Value:    sessionID,
