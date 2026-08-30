@@ -118,7 +118,7 @@ func main() {
 		json.NewEncoder(w).Encode(players)
 	})
 
-	http.HandleFunc("api/fantasy-teams", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/api/fantasy-teams", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
