@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"ff-fantasy/models"
+	"ff-fantasy/scoring"
 )
 
 type FantasyTeamHandler struct {
@@ -390,5 +391,119 @@ func (h *FantasyTeamHandler) SetCaptain(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"fantasy_team_id":   fantasyTeamID,
 		"captain_player_id": request.PlayerID,
+	})
+}
+
+func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fantasyTeamID := r.PathValue("id")
+
+	cookie, err := r.Cookie("session_id")
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, exists := h.Sessions.GetUserID(cookie.Value)
+	if !exists {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var teamOwnerID int
+	var captainPlayerID *int
+
+	err = h.DB.QueryRow(
+		context.Background(),
+		"SELECT user_id, captain_player_id FROM fantasy_teams WHERE id = $1",
+		fantasyTeamID,
+	).Scan(&teamOwnerID, &captainPlayerID)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			http.Error(w, "Fantasy team not found", http.StatusNotFound)
+			return
+		}
+
+		http.Error(w, "Failed to find fantasy team", http.StatusInternalServerError)
+		return
+	}
+
+	if teamOwnerID != userID {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	rows, err := h.DB.Query(
+		context.Background(),
+		`SELECT
+			ftp.player_id,
+			prs.kills,
+			prs.assists,
+			prs.first_blood,
+			prs.placement
+		FROM fantasy_team_players ftp
+		LEFT JOIN player_room_stats prs
+			ON ftp.player_id = prs.player_id
+		WHERE ftp.fantasy_team_id = $1`,
+		fantasyTeamID,
+	)
+
+	if err != nil {
+		http.Error(w, "Failed to get player statistics", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	totalPoints := 0
+
+	for rows.Next() {
+		var playerID int
+		var kills int
+		var assists int
+		var firstBlood bool
+		var placement int
+
+		err := rows.Scan(
+			&playerID,
+			&kills,
+			&assists,
+			&firstBlood,
+			&placement,
+		)
+
+		if err != nil {
+			http.Error(w, "Failed to read player statistics", http.StatusInternalServerError)
+			return
+		}
+
+		points := scoring.PlayerRoomPoints(
+			kills,
+			assists,
+			firstBlood,
+			placement,
+		)
+
+		if captainPlayerID != nil && playerID == *captainPlayerID {
+			points *= 2
+		}
+
+		totalPoints += points
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Error reading player statistics", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"fantasy_team_id": fantasyTeamID,
+		"total_points":    totalPoints,
 	})
 }
