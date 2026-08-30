@@ -41,6 +41,7 @@ func main() {
 
 	http.HandleFunc("/api/register", authHandler.Register)
 	http.HandleFunc("/api/login", authHandler.Login)
+	http.HandleFunc("/api/me", authHandler.Me)
 
 	fmt.Println("Server running on http://localhost:8080")
 
