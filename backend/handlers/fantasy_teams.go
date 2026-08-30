@@ -11,7 +11,8 @@ import (
 )
 
 type FantasyTeamHandler struct {
-	DB *pgx.Conn
+	DB       *pgx.Conn
+	Sessions *SessionStore
 }
 
 func (h *FantasyTeamHandler) CreateFantasyTeam(w http.ResponseWriter, r *http.Request) {
