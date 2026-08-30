@@ -77,10 +77,12 @@ func main() {
 	})
 
 	http.HandleFunc("/api/teams/{id}/players", func(w http.ResponseWriter, r *http.Request) {
+
+		id := r.PathValue("id")
 		rows, err := conn.Query(
 			context.Background(),
 			"SELECT id, nickname FROM players WHERE team_id = $1",
-			1,
+			id,
 		)
 		if err != nil {
 			http.Error(w, "Failed to get players", http.StatusInternalServerError)
