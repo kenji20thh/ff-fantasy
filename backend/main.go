@@ -148,26 +148,28 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]int{"fantasy_team_id": fanatasyTeamID})
 	})
 
-	http.HandleFUnc("/api/fantasy-teams/{id}/players", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/api/fantasy-teams/{id}/players", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
 		var request struct {
-			PlayerID []int `json:"player_ids"`
+			PlayerIDs []int `json:"player_ids"`
 		}
+
 		err := json.NewDecoder(r.Body).Decode(&request)
 		if err != nil {
 			http.Error(w, "Invalid JSON", http.StatusBadRequest)
 			return
 		}
 
-		if len(request.PlayerID) != 4 {
+		if len(request.PlayerIDs) != 4 {
 			http.Error(w, "You must select exactly 4 players", http.StatusBadRequest)
 			return
 		}
-		w.Header.Set("Content-Type", "application/json")
+
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(request)
 	})
 
