@@ -130,15 +130,22 @@ func main() {
 		if err != nil {
 			http.Error(w, "Invalid JSON", http.StatusBadRequest)
 			return
-		} 
+		}
 		var fanatasyTeamID int
 		err = conn.QueryRow(
 			context.Background(),
 			"INSERT INTO fantasy_teams (user_id) VALUES ($1) RETURNING Id",
 			request.UserID,
-
 		).Scan(&fanatasyTeamID)
-	)
+
+		if err != nil {
+			http.Error(w, "Failed to create fantasy team", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int{"fantasy_team_id": fanatasyTeamID})
+	})
 
 	fmt.Println("Server running on http://localhost:8080")
 
