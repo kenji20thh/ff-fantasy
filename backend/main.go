@@ -26,11 +26,17 @@ func main() {
 		DB: conn,
 	}
 
+	authHandler := &handlers.AuthHandler{
+		DB: conn,
+	}
+
 	http.HandleFunc("/api/teams", teamHandler.GetTeams)
 	http.HandleFunc("/api/teams/{id}/players", teamHandler.GetPlayers)
 
 	http.HandleFunc("/api/fantasy-teams", fantasyTeamHandler.CreateFantasyTeam)
 	http.HandleFunc("/api/fantasy-teams/{id}/players", fantasyTeamHandler.SelectPlayers)
+
+	http.HandleFunc("/api/register", authHandler.Register)
 
 	fmt.Println("Server running on http://localhost:8080")
 
