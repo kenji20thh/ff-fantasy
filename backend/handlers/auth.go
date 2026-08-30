@@ -137,3 +137,37 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
 }
+
+func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("session_id")
+	if err != nil {
+		http.Error(w, "Not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	userID, exists := h.Sessions.GetUserID(cookie.Value)
+	if !exists {
+		http.Error(w, "Not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	var user models.User
+
+	err = h.DB.QueryRow(
+		context.Background(),
+		"SELECT id, username, email FROM users WHERE id = $1",
+		userID,
+	).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+	)
+
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
+}
