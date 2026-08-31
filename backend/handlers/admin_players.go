@@ -60,3 +60,10 @@ func (h *AdminPlayerHandler) CreatePlayer(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(player)
 }
+
+func (h *AdminPlayerHandler) UpdatePlayer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+}
