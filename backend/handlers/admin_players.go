@@ -66,4 +66,22 @@ func (h *AdminPlayerHandler) UpdatePlayer(w http.ResponseWriter, r *http.Request
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	playerID := r.PathValue("id")
+
+	var request struct {
+		TeamID   int    `json:"team_id"`
+		Nickname string `json:"nickname"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if request.TeamID <= 0 || request.Nickname == "" {
+		http.Error(w, "Team ID and nickname required", http.StatusBadRequest)
+		return
+	}
 }
