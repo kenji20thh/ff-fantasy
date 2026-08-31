@@ -250,7 +250,7 @@ func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Reque
 
 	err = h.DB.QueryRow(
 		context.Background(),
-		"SELECT id, user_id FROM fantasy_teams WHERE id = $1",
+		"SELECT id, user_id, captain_player_id FROM fantasy_teams WHERE id = $1",
 		fantasyTeamID,
 	).Scan(&fantasyTeam.ID, &fantasyTeam.UserID)
 
