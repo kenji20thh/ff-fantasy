@@ -65,6 +65,15 @@ func main() {
 	)
 
 	http.HandleFunc(
+		"/api/admin/teams/{id}",
+		handlers.RequireAdmin(
+			conn,
+			sessionStore,
+			adminTeamHandler.ManageTeam,
+		),
+	)
+
+	http.HandleFunc(
 		"/api/admin/players",
 		handlers.RequireAdmin(
 			conn,
