@@ -84,4 +84,31 @@ func (h *AdminPlayerHandler) UpdatePlayer(w http.ResponseWriter, r *http.Request
 		http.Error(w, "Team ID and nickname required", http.StatusBadRequest)
 		return
 	}
+
+	var player models.Player
+
+	err = h.DB.QueryRow(
+		context.Background(),
+		`UPDATE players
+		SET team_id = $1, nickname = $2
+		WHERE id = $3
+		RETURNING id, team_id, nickname`,
+		request.TeamID,
+		request.Nickname,
+		playerID,
+	).Scan(
+		&player.ID,
+		&player.TeamID,
+		&player.Nickname,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			http.Error(w, "Player not found", http.StatusNotFound)
+			return
+		}
+
+		http.Error(w, "failed to update player", http.StatusInternalServerError)
+		return
+	}
 }
