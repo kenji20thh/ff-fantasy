@@ -95,6 +95,15 @@ func main() {
 		),
 	)
 
+	http.HandleFunc(
+		"/api/admin/rooms/{room_id}/stats/{player_id}",
+		handlers.RequireAdmin(
+			conn,
+			sessionStore,
+			adminStatsHandler.ManageStats,
+		),
+	)
+
 	fmt.Println("Server running on http://localhost:8080")
 
 	err = http.ListenAndServe(":8080", nil)
