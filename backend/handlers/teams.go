@@ -88,3 +88,62 @@ func (h *TeamHandler) GetPlayers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(players)
 }
+
+func (h *TeamHandler) GetRoomStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	roomID := r.PathValue("id")
+
+	rows, err := h.DB.Query(
+		context.Background(),
+		`SELECT player_id, kills, assists, first_blood, placement
+		 FROM player_room_stats
+		 WHERE room_id = $1
+		 ORDER BY player_id`,
+		roomID,
+	)
+	if err != nil {
+		http.Error(w, "Failed to get statistics", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type PlayerRoomStats struct {
+		PlayerID   int  `json:"player_id"`
+		Kills      int  `json:"kills"`
+		Assists    int  `json:"assists"`
+		FirstBlood bool `json:"first_blood"`
+		Placement  int  `json:"placement"`
+	}
+
+	stats := []PlayerRoomStats{}
+
+	for rows.Next() {
+		var stat PlayerRoomStats
+
+		err := rows.Scan(
+			&stat.PlayerID,
+			&stat.Kills,
+			&stat.Assists,
+			&stat.FirstBlood,
+			&stat.Placement,
+		)
+		if err != nil {
+			http.Error(w, "Failed to read statistics", http.StatusInternalServerError)
+			return
+		}
+
+		stats = append(stats, stat)
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Error reading statistics", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
+}

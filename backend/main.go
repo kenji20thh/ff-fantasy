@@ -54,6 +54,7 @@ func main() {
 	http.HandleFunc("/api/fantasy-teams/{id}/players", fantasyTeamHandler.SelectPlayers)
 	http.HandleFunc("/api/fantasy-teams/{id}/captain", fantasyTeamHandler.SetCaptain)
 	http.HandleFunc("/api/fantasy-teams/{id}/points", fantasyTeamHandler.GetFantasyTeamPoints)
+	http.HandleFunc("/api/rooms/{id}/stats", teamHandler.GetRoomStats)
 
 	http.HandleFunc("/api/register", authHandler.Register)
 	http.HandleFunc("/api/login", authHandler.Login)
@@ -104,6 +105,14 @@ func main() {
 		),
 	)
 
+	http.HandleFunc(
+		"/api/admin/rooms/{room_id}/stats",
+		handlers.RequireAdmin(
+			conn,
+			sessionStore,
+			adminStatsHandler.GetRoomStats,
+		),
+	)
 	fmt.Println("Server running on http://localhost:8080")
 
 	err = http.ListenAndServe(":8080", nil)
