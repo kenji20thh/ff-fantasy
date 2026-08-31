@@ -7,8 +7,6 @@ import (
 	"sort"
 
 	"github.com/jackc/pgx/v5"
-
-	"ff-fantasy/scoring"
 )
 
 type LeaderboardHandler struct {
@@ -101,16 +99,15 @@ func (h *LeaderboardHandler) GetLeaderboard(w http.ResponseWriter, r *http.Reque
 			}
 		}
 
-		points := scoring.PlayerRoomPoints(
+		isCaptain := captainID != nil && playerID == *captainID
+
+		points := CalculatePlayerPoints(
 			kills,
 			assists,
 			firstBlood,
 			placement,
+			isCaptain,
 		)
-
-		if captainID != nil && playerID == *captainID {
-			points *= 2
-		}
 
 		teams[fantasyTeamID].TotalPoints += points
 	}
