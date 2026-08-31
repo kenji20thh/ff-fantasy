@@ -42,6 +42,10 @@ func main() {
 		DB: conn,
 	}
 
+	adminStatsHandler := &handlers.AdminStatsHandler{
+		DB: conn,
+	}
+
 	http.HandleFunc("/api/teams", teamHandler.GetTeams)
 	http.HandleFunc("/api/teams/{id}/players", teamHandler.GetPlayers)
 
