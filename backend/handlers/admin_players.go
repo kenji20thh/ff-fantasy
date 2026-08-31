@@ -142,3 +142,14 @@ func (h *AdminPlayerHandler) DeletePlayer(w http.ResponseWriter, r *http.Request
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (h *AdminPlayerHandler) ManagePlayer(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPut:
+		h.UpdatePlayer(w, r)
+	case http.MethodDelete:
+		h.DeletePlayer(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
