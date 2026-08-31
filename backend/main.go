@@ -59,6 +59,7 @@ func main() {
 	http.HandleFunc("/api/fantasy-teams/{id}/captain", fantasyTeamHandler.SetCaptain)
 	http.HandleFunc("/api/fantasy-teams/{id}/points", fantasyTeamHandler.GetFantasyTeamPoints)
 	http.HandleFunc("/api/rooms/{id}/stats", teamHandler.GetRoomStats)
+	http.HandleFunc("/api/leaderboard", leaderboardHandler.GetLeaderboard)
 
 	http.HandleFunc("/api/register", authHandler.Register)
 	http.HandleFunc("/api/login", authHandler.Login)
