@@ -78,16 +78,7 @@ func main() {
 		handlers.RequireAdmin(
 			conn,
 			sessionStore,
-			adminPlayerHandler.UpdatePlayer,
-		),
-	)
-
-	http.HandleFunc(
-		"/api/admin/players/{id}",
-		handlers.RequireAdmin(
-			conn,
-			sessionStore,
-			adminPlayerHandler.DeletePlayer,
+			adminPlayerHandler.ManagePlayer,
 		),
 	)
 
