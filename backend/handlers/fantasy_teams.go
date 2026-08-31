@@ -247,12 +247,17 @@ func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Reque
 	fantasyTeamID := r.PathValue("id")
 
 	var fantasyTeam models.FantasyTeam
+	var captainPlayerID *int
 
 	err = h.DB.QueryRow(
 		context.Background(),
 		"SELECT id, user_id, captain_player_id FROM fantasy_teams WHERE id = $1",
 		fantasyTeamID,
-	).Scan(&fantasyTeam.ID, &fantasyTeam.UserID)
+	).Scan(
+		&fantasyTeam.ID,
+		&fantasyTeam.UserID,
+		&captainPlayerID,
+	)
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -302,9 +307,10 @@ func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":         fantasyTeam.ID,
-		"user_id":    fantasyTeam.UserID,
-		"player_ids": playerIDs,
+		"id":                fantasyTeam.ID,
+		"user_id":           fantasyTeam.UserID,
+		"player_ids":        playerIDs,
+		"captain_player_id": captainPlayerID,
 	})
 }
 
