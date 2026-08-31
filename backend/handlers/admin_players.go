@@ -81,7 +81,7 @@ func (h *AdminPlayerHandler) UpdatePlayer(w http.ResponseWriter, r *http.Request
 	}
 
 	if request.TeamID <= 0 || request.Nickname == "" {
-		http.Error(w, "Team ID and nickname required", http.StatusBadRequest)
+		http.Error(w, "Team ID and nickname are required", http.StatusBadRequest)
 		return
 	}
 
@@ -90,9 +90,9 @@ func (h *AdminPlayerHandler) UpdatePlayer(w http.ResponseWriter, r *http.Request
 	err = h.DB.QueryRow(
 		context.Background(),
 		`UPDATE players
-		SET team_id = $1, nickname = $2
-		WHERE id = $3
-		RETURNING id, team_id, nickname`,
+		 SET team_id = $1, nickname = $2
+		 WHERE id = $3
+		 RETURNING id, team_id, nickname`,
 		request.TeamID,
 		request.Nickname,
 		playerID,
@@ -108,7 +108,37 @@ func (h *AdminPlayerHandler) UpdatePlayer(w http.ResponseWriter, r *http.Request
 			return
 		}
 
-		http.Error(w, "failed to update player", http.StatusInternalServerError)
+		http.Error(w, "Failed to update player", http.StatusInternalServerError)
 		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(player)
+}
+
+func (h *AdminPlayerHandler) DeletePlayer(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	playerID := r.PathValue("id")
+
+	result, err := h.DB.Exec(
+		context.Background(),
+		"DELETE FROM players WHERE id = $1",
+		playerID,
+	)
+
+	if err != nil {
+		http.Error(w, "Failed to delete player", http.StatusInternalServerError)
+		return
+	}
+
+	if result.RowsAffected() == 0 {
+		http.Error(w, "Player not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
