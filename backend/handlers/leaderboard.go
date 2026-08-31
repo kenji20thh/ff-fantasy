@@ -135,7 +135,11 @@ func (h *LeaderboardHandler) GetLeaderboard(w http.ResponseWriter, r *http.Reque
 	})
 
 	for i := range entries {
-		entries[i].Rank = i + 1
+		if i == 0 || entries[i].Points != entries[i-1].Points {
+			entries[i].Rank = i + 1
+		} else {
+			entries[i].Rank = entries[i-1].Rank
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
