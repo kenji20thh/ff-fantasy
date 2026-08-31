@@ -184,6 +184,11 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 		fantasyTeamID,
 	)
 
+	if err != nil {
+		http.Error(w, "Failed to remove old players", http.StatusInternalServerError)
+		return
+	}
+
 	_, err = tx.Exec(
 		context.Background(),
 		"UPDATE fantasy_teams SET captain_player_id = NULL WHERE id = $1",
@@ -191,11 +196,6 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 	)
 	if err != nil {
 		http.Error(w, "Failed to reset captain", http.StatusInternalServerError)
-		return
-	}
-
-	if err != nil {
-		http.Error(w, "Failed to remove old players", http.StatusInternalServerError)
 		return
 	}
 
