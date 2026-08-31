@@ -436,7 +436,9 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 
 	err = h.DB.QueryRow(
 		context.Background(),
-		"SELECT user_id, captain_player_id FROM fantasy_teams WHERE id = $1",
+		`SELECT user_id, captain_player_id
+		 FROM fantasy_teams
+		 WHERE id = $1`,
 		fantasyTeamID,
 	).Scan(&teamOwnerID, &captainPlayerID)
 
@@ -455,39 +457,60 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 		return
 	}
 
+	type RoomScore struct {
+		RoomID     int  `json:"room_id"`
+		Kills      int  `json:"kills"`
+		Assists    int  `json:"assists"`
+		FirstBlood bool `json:"first_blood"`
+		Placement  int  `json:"placement"`
+		Points     int  `json:"points"`
+	}
+
+	type PlayerScore struct {
+		PlayerID    int         `json:"player_id"`
+		Captain     bool        `json:"captain"`
+		Rooms       []RoomScore `json:"rooms"`
+		TotalPoints int         `json:"total_points"`
+	}
+
 	rows, err := h.DB.Query(
 		context.Background(),
 		`SELECT
-		ftp.player_id,
-		COALESCE(prs.kills, 0),
-		COALESCE(prs.assists, 0),
-		COALESCE(prs.first_blood, false),
-		COALESCE(prs.placement, 0)
-	FROM fantasy_team_players ftp
-	LEFT JOIN player_room_stats prs
-		ON ftp.player_id = prs.player_id
-	WHERE ftp.fantasy_team_id = $1`,
+			ftp.player_id,
+			prs.room_id,
+			COALESCE(prs.kills, 0),
+			COALESCE(prs.assists, 0),
+			COALESCE(prs.first_blood, false),
+			COALESCE(prs.placement, 0)
+		FROM fantasy_team_players ftp
+		LEFT JOIN player_room_stats prs
+			ON prs.player_id = ftp.player_id
+		WHERE ftp.fantasy_team_id = $1
+		ORDER BY ftp.player_id, prs.room_id`,
 		fantasyTeamID,
 	)
 
 	if err != nil {
-
 		http.Error(w, "Failed to get player statistics", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	totalPoints := 0
+	players := make(map[int]*PlayerScore)
 
 	for rows.Next() {
-		var playerID int
-		var kills int
-		var assists int
-		var firstBlood bool
-		var placement int
+		var (
+			playerID   int
+			roomID     *int
+			kills      int
+			assists    int
+			firstBlood bool
+			placement  int
+		)
 
 		err := rows.Scan(
 			&playerID,
+			&roomID,
 			&kills,
 			&assists,
 			&firstBlood,
@@ -499,6 +522,19 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 			return
 		}
 
+		if _, exists := players[playerID]; !exists {
+			players[playerID] = &PlayerScore{
+				PlayerID: playerID,
+				Captain:  captainPlayerID != nil && playerID == *captainPlayerID,
+				Rooms:    []RoomScore{},
+			}
+		}
+
+		// No stats yet for this player.
+		if roomID == nil {
+			continue
+		}
+
 		points := scoring.PlayerRoomPoints(
 			kills,
 			assists,
@@ -506,17 +542,36 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 			placement,
 		)
 
-		if captainPlayerID != nil && playerID == *captainPlayerID {
-			points *= 2
-		}
+		players[playerID].Rooms = append(
+			players[playerID].Rooms,
+			RoomScore{
+				RoomID:     *roomID,
+				Kills:      kills,
+				Assists:    assists,
+				FirstBlood: firstBlood,
+				Placement:  placement,
+				Points:     points,
+			},
+		)
 
-		totalPoints += points
+		players[playerID].TotalPoints += points
 	}
 
 	if err := rows.Err(); err != nil {
-
 		http.Error(w, "Error reading player statistics", http.StatusInternalServerError)
 		return
+	}
+
+	playerScores := make([]PlayerScore, 0, len(players))
+	totalPoints := 0
+
+	for _, player := range players {
+		if player.Captain {
+			player.TotalPoints *= 2
+		}
+
+		totalPoints += player.TotalPoints
+		playerScores = append(playerScores, *player)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -524,5 +579,6 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"fantasy_team_id": fantasyTeamID,
 		"total_points":    totalPoints,
+		"players":         playerScores,
 	})
 }
