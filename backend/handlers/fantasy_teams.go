@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"ff-fantasy/models"
-	"ff-fantasy/scoring"
 )
 
 type FantasyTeamHandler struct {
@@ -535,11 +534,14 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 			continue
 		}
 
-		points := scoring.PlayerRoomPoints(
+		isCaptain := captainPlayerID != nil && playerID == *captainPlayerID
+
+		points := CalculatePlayerPoints(
 			kills,
 			assists,
 			firstBlood,
 			placement,
+			isCaptain,
 		)
 
 		players[playerID].Rooms = append(
