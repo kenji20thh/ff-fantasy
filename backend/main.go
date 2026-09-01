@@ -50,6 +50,10 @@ func main() {
 		DB: conn,
 	}
 
+	adminTournamentDayHandler := &handlers.AdminTournamentDayHandler{
+		DB: conn,
+	}
+
 	leaderboardHandler := &handlers.LeaderboardHandler{
 		DB: conn,
 	}
@@ -112,6 +116,15 @@ func main() {
 			conn,
 			sessionStore,
 			adminStatsHandler.ManageStats,
+		),
+	)
+
+	http.HandleFunc(
+		"/api/admin/tournament-days",
+		handlers.RequireAdmin(
+			conn,
+			sessionStore,
+			adminTournamentDayHandler.CreateTournamentDay,
 		),
 	)
 
