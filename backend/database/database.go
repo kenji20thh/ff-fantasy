@@ -3,11 +3,11 @@ package database
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func Connect() (*pgx.Conn, error) {
-	conn, err := pgx.Connect(
+func Connect() (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(
 		context.Background(),
 		"postgres://kenji20th:MrR@b@!@localhost:5432/ff_fantasy",
 	)
@@ -16,13 +16,13 @@ func Connect() (*pgx.Conn, error) {
 		return nil, err
 	}
 
-	err = conn.Ping(context.Background())
+	err = pool.Ping(context.Background())
 	if err != nil {
-		conn.Close(context.Background())
+		pool.Close()
 		return nil, err
 	}
 
-	return conn, nil
+	return pool, nil
 }
 
 func Context() context.Context {
