@@ -3,12 +3,14 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"golang.org/x/crypto/bcrypt"
 
 	"ff-fantasy/models"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -66,6 +68,13 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
+		var pgErr *pgconn.PgError
+
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			http.Error(w, "Username or email is already taken", http.StatusConflict)
+			return
+		}
+
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
 		return
 	}
