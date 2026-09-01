@@ -6,12 +6,13 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"ff-fantasy/models"
 )
 
 type AdminTeamHandler struct {
-	DB *pgx.Conn
+	DB *pgxpool.Pool
 }
 
 func (h *AdminTeamHandler) CreateTeam(w http.ResponseWriter, r *http.Request) {

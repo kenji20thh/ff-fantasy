@@ -8,13 +8,14 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"ff-fantasy/models"
 	"ff-fantasy/scoring"
 )
 
 type FantasyTeamHandler struct {
-	DB       *pgx.Conn
+	DB       *pgxpool.Pool
 	Sessions *SessionStore
 }
 

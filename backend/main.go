@@ -14,7 +14,7 @@ func main() {
 		fmt.Println("Error connecting to PostgreSQL:", err)
 		return
 	}
-	defer conn.Close(database.Context())
+	defer conn.Close()
 
 	fmt.Println("Connected to PostgreSQL")
 

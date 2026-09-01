@@ -5,10 +5,11 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func RequireAdmin(
-	db *pgx.Conn,
+	db *pgxpool.Pool,
 	sessions *SessionStore,
 	next http.HandlerFunc,
 ) http.HandlerFunc {

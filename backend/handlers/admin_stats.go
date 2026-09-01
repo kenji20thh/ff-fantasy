@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type AdminStatsHandler struct {
-	DB *pgx.Conn
+	DB *pgxpool.Pool
 }
 
 type PlayerRoomStatsRequest struct {

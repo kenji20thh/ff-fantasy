@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"ff-fantasy/models"
 )
 
 type TeamHandler struct {
-	DB *pgx.Conn
+	DB *pgxpool.Pool
 }
 
 func (h *TeamHandler) GetTeams(w http.ResponseWriter, r *http.Request) {

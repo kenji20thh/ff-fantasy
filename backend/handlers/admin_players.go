@@ -6,12 +6,13 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"ff-fantasy/models"
 )
 
 type AdminPlayerHandler struct {
-	DB *pgx.Conn
+	DB *pgxpool.Pool
 }
 
 func (h *AdminPlayerHandler) CreatePlayer(w http.ResponseWriter, r *http.Request) {

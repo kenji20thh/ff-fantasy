@@ -6,13 +6,13 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"ff-fantasy/scoring"
 )
 
 type LeaderboardHandler struct {
-	DB *pgx.Conn
+	DB *pgxpool.Pool
 }
 
 type leaderboardEntry struct {
