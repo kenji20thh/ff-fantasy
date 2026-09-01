@@ -129,6 +129,16 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	open, err := isTransferWindowOpen(context.Background(), h.DB)
+	if err != nil {
+		http.Error(w, "Failed to check transfer window", http.StatusInternalServerError)
+		return
+	}
+	if !open {
+		http.Error(w, "Transfer window is closed for the current matchday.", http.StatusLocked)
+		return
+	}
+
 	rows, err := h.DB.Query(
 		context.Background(),
 		"SELECT id, team_id FROM players WHERE id = ANY($1)",
@@ -368,6 +378,16 @@ func (h *FantasyTeamHandler) SetCaptain(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	open, err := isTransferWindowOpen(context.Background(), h.DB)
+	if err != nil {
+		http.Error(w, "Failed to check transfer window", http.StatusInternalServerError)
+		return
+	}
+	if !open {
+		http.Error(w, "Transfer window is closed for the current matchday.", http.StatusLocked)
+		return
+	}
+
 	var playerExists bool
 
 	err = h.DB.QueryRow(
@@ -582,4 +602,32 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 		"total_points":    totalPoints,
 		"players":         playerScores,
 	})
+}
+
+func isTransferWindowOpen(ctx context.Context, db *pgxpool.Pool) (bool, error) {
+	var totalWithDeadline int
+
+	err := db.QueryRow(
+		ctx,
+		"SELECT COUNT(*) FROM tournament_days WHERE deadline_at IS NOT NULL",
+	).Scan(&totalWithDeadline)
+	if err != nil {
+		return false, err
+	}
+
+	if totalWithDeadline == 0 {
+		return true, nil
+	}
+
+	var openCount int
+
+	err = db.QueryRow(
+		ctx,
+		"SELECT COUNT(*) FROM tournament_days WHERE deadline_at > now()",
+	).Scan(&openCount)
+	if err != nil {
+		return false, err
+	}
+
+	return openCount > 0, nil
 }
