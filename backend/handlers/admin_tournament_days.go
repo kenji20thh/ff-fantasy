@@ -320,19 +320,15 @@ func (h *AdminTournamentDayHandler) UpdateTournamentDay(w http.ResponseWriter, r
 
 	ctx := context.Background()
 
-	tx, err := h.DB.Begin(ctx)
-	if err != nil {
-		http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
-		return
-	}
-	defer tx.Rollback(ctx)
-
+	// Check that the tournament day exists.
 	var exists bool
 
-	err = tx.QueryRow(
+	err := h.DB.QueryRow(
 		ctx,
 		`SELECT EXISTS(
-			SELECT 1 FROM tournament_days WHERE id = $1
+			SELECT 1
+			FROM tournament_days
+			WHERE id = $1
 		)`,
 		dayID,
 	).Scan(&exists)
@@ -347,7 +343,8 @@ func (h *AdminTournamentDayHandler) UpdateTournamentDay(w http.ResponseWriter, r
 		return
 	}
 
-	_, err = tx.Exec(
+	// Update the tournament day.
+	_, err = h.DB.Exec(
 		ctx,
 		`UPDATE tournament_days
 		 SET tournament_id = $1,
@@ -365,7 +362,8 @@ func (h *AdminTournamentDayHandler) UpdateTournamentDay(w http.ResponseWriter, r
 		return
 	}
 
-	_, err = tx.Exec(
+	// Replace participating teams.
+	_, err = h.DB.Exec(
 		ctx,
 		`DELETE FROM tournament_day_teams
 		 WHERE tournament_day_id = $1`,
@@ -378,7 +376,7 @@ func (h *AdminTournamentDayHandler) UpdateTournamentDay(w http.ResponseWriter, r
 	}
 
 	for _, teamID := range request.Teams {
-		_, err = tx.Exec(
+		_, err = h.DB.Exec(
 			ctx,
 			`INSERT INTO tournament_day_teams
 				(tournament_day_id, team_id)
@@ -393,42 +391,94 @@ func (h *AdminTournamentDayHandler) UpdateTournamentDay(w http.ResponseWriter, r
 		}
 	}
 
-	_, err = tx.Exec(
+	// Get current room count.
+	var currentRoomCount int
+
+	err = h.DB.QueryRow(
 		ctx,
-		`DELETE FROM rooms
+		`SELECT COUNT(*)
+		 FROM rooms
 		 WHERE tournament_day_id = $1`,
 		dayID,
-	)
+	).Scan(&currentRoomCount)
 
 	if err != nil {
-		http.Error(w, "Failed to update rooms", http.StatusInternalServerError)
+		http.Error(w, "Failed to get current room count", http.StatusInternalServerError)
 		return
 	}
 
-	for roomNumber := 1; roomNumber <= request.RoomCount; roomNumber++ {
-		_, err = tx.Exec(
-			ctx,
-			`INSERT INTO rooms
-				(tournament_day_id, room_number)
-			 VALUES ($1, $2)`,
-			dayID,
-			roomNumber,
-		)
+	// Add rooms if needed.
+	if request.RoomCount > currentRoomCount {
+		for roomNumber := currentRoomCount + 1; roomNumber <= request.RoomCount; roomNumber++ {
+			_, err = h.DB.Exec(
+				ctx,
+				`INSERT INTO rooms
+					(tournament_day_id, room_number)
+				 VALUES ($1, $2)`,
+				dayID,
+				roomNumber,
+			)
 
-		if err != nil {
-			http.Error(w, "Failed to create rooms", http.StatusInternalServerError)
-			return
+			if err != nil {
+				http.Error(w, "Failed to create rooms", http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		http.Error(w, "Failed to save tournament day", http.StatusInternalServerError)
-		return
+	// Remove rooms if needed.
+	if request.RoomCount < currentRoomCount {
+		for roomNumber := currentRoomCount; roomNumber > request.RoomCount; roomNumber++ {
+
+			var hasStats bool
+
+			err = h.DB.QueryRow(
+				ctx,
+				`SELECT EXISTS(
+					SELECT 1
+					FROM player_room_stats prs
+					JOIN rooms r ON r.id = prs.room_id
+					WHERE r.tournament_day_id = $1
+					  AND r.room_number = $2
+				)`,
+				dayID,
+				roomNumber,
+			).Scan(&hasStats)
+
+			if err != nil {
+				http.Error(w, "Failed to check room statistics", http.StatusInternalServerError)
+				return
+			}
+
+			if hasStats {
+				http.Error(
+					w,
+					"Cannot reduce room count because room "+strconv.Itoa(roomNumber)+" already has statistics",
+					http.StatusConflict,
+				)
+				return
+			}
+
+			_, err = h.DB.Exec(
+				ctx,
+				`DELETE FROM rooms
+				 WHERE tournament_day_id = $1
+				   AND room_number = $2`,
+				dayID,
+				roomNumber,
+			)
+
+			if err != nil {
+				http.Error(w, "Failed to delete room", http.StatusInternalServerError)
+				return
+			}
+		}
 	}
+
+	w.Header().Set("Content-Type", "application/json")
 
 	id, _ := strconv.Atoi(dayID)
 
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(TournamentDayResponse{
 		ID:           id,
 		TournamentID: request.TournamentID,
@@ -441,10 +491,39 @@ func (h *AdminTournamentDayHandler) UpdateTournamentDay(w http.ResponseWriter, r
 
 func (h *AdminTournamentDayHandler) DeleteTournamentDay(w http.ResponseWriter, r *http.Request) {
 	dayID := r.PathValue("id")
+	ctx := context.Background()
+
+	var hasStats bool
+
+	err := h.DB.QueryRow(
+		ctx,
+		`SELECT EXISTS(
+			SELECT 1
+			FROM player_room_stats prs
+			JOIN rooms r ON r.id = prs.room_id
+			WHERE r.tournament_day_id = $1
+		)`,
+		dayID,
+	).Scan(&hasStats)
+
+	if err != nil {
+		http.Error(w, "Failed to check tournament day statistics", http.StatusInternalServerError)
+		return
+	}
+
+	if hasStats {
+		http.Error(
+			w,
+			"Cannot delete tournament day because it has player statistics",
+			http.StatusConflict,
+		)
+		return
+	}
 
 	result, err := h.DB.Exec(
-		context.Background(),
-		`DELETE FROM tournament_days WHERE id = $1`,
+		ctx,
+		`DELETE FROM tournament_days
+		 WHERE id = $1`,
 		dayID,
 	)
 
