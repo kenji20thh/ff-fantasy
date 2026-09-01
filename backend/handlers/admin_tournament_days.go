@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,16 +23,43 @@ type CreateTournamentDayRequest struct {
 	DeadlineAt   time.Time `json:"deadline_at"`
 }
 
-func (h *AdminTournamentDayHandler) CreateTournamentDay(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+type TournamentDayResponse struct {
+	ID           int       `json:"id"`
+	TournamentID int       `json:"tournament_id"`
+	Name         string    `json:"name"`
+	DeadlineAt   time.Time `json:"deadline_at"`
+	Teams        []int     `json:"teams"`
+	RoomCount    int       `json:"room_count"`
+}
 
+func (h *AdminTournamentDayHandler) ManageTournamentDays(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.GetTournamentDays(w, r)
+	case http.MethodPost:
+		h.CreateTournamentDay(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *AdminTournamentDayHandler) ManageTournamentDay(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.GetTournamentDay(w, r)
+	case http.MethodPut:
+		h.UpdateTournamentDay(w, r)
+	case http.MethodDelete:
+		h.DeleteTournamentDay(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *AdminTournamentDayHandler) CreateTournamentDay(w http.ResponseWriter, r *http.Request) {
 	var request CreateTournamentDayRequest
 
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
@@ -114,8 +143,7 @@ func (h *AdminTournamentDayHandler) CreateTournamentDay(w http.ResponseWriter, r
 		}
 	}
 
-	err = tx.Commit(ctx)
-	if err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		http.Error(w, "Failed to save tournament day", http.StatusInternalServerError)
 		return
 	}
@@ -123,33 +151,24 @@ func (h *AdminTournamentDayHandler) CreateTournamentDay(w http.ResponseWriter, r
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":            dayID,
-		"tournament_id": request.TournamentID,
-		"name":          request.Name,
-		"teams":         request.Teams,
-		"room_count":    request.RoomCount,
-		"deadline_at":   request.DeadlineAt,
+	json.NewEncoder(w).Encode(TournamentDayResponse{
+		ID:           dayID,
+		TournamentID: request.TournamentID,
+		Name:         request.Name,
+		Teams:        request.Teams,
+		RoomCount:    request.RoomCount,
+		DeadlineAt:   request.DeadlineAt,
 	})
 }
 
 func (h *AdminTournamentDayHandler) GetTournamentDays(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	ctx := context.Background()
 
 	rows, err := h.DB.Query(
 		ctx,
-		`SELECT
-			td.id,
-			td.tournament_id,
-			td.name,
-			td.deadline_at
-		FROM tournament_days td
-		ORDER BY td.id`,
+		`SELECT id, tournament_id, name, deadline_at
+		 FROM tournament_days
+		 ORDER BY id`,
 	)
 	if err != nil {
 		http.Error(w, "Failed to get tournament days", http.StatusInternalServerError)
@@ -157,27 +176,17 @@ func (h *AdminTournamentDayHandler) GetTournamentDays(w http.ResponseWriter, r *
 	}
 	defer rows.Close()
 
-	type TournamentDay struct {
-		ID           int       `json:"id"`
-		TournamentID int       `json:"tournament_id"`
-		Name         string    `json:"name"`
-		DeadlineAt   time.Time `json:"deadline_at"`
-		Teams        []int     `json:"teams"`
-		RoomCount    int       `json:"room_count"`
-	}
-
-	var days []TournamentDay
+	days := []TournamentDayResponse{}
 
 	for rows.Next() {
-		var day TournamentDay
+		var day TournamentDayResponse
 
-		err := rows.Scan(
+		if err := rows.Scan(
 			&day.ID,
 			&day.TournamentID,
 			&day.Name,
 			&day.DeadlineAt,
-		)
-		if err != nil {
+		); err != nil {
 			http.Error(w, "Failed to read tournament days", http.StatusInternalServerError)
 			return
 		}
@@ -189,6 +198,7 @@ func (h *AdminTournamentDayHandler) GetTournamentDays(w http.ResponseWriter, r *
 			 WHERE tournament_day_id = $1`,
 			day.ID,
 		).Scan(&day.Teams)
+
 		if err != nil {
 			http.Error(w, "Failed to get tournament day teams", http.StatusInternalServerError)
 			return
@@ -201,6 +211,7 @@ func (h *AdminTournamentDayHandler) GetTournamentDays(w http.ResponseWriter, r *
 			 WHERE tournament_day_id = $1`,
 			day.ID,
 		).Scan(&day.RoomCount)
+
 		if err != nil {
 			http.Error(w, "Failed to get room count", http.StatusInternalServerError)
 			return
@@ -214,44 +225,15 @@ func (h *AdminTournamentDayHandler) GetTournamentDays(w http.ResponseWriter, r *
 		return
 	}
 
-	if days == nil {
-		days = []TournamentDay{}
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(days)
 }
 
-func (h *AdminTournamentDayHandler) ManageTournamentDays(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		h.GetTournamentDays(w, r)
-	case http.MethodPost:
-		h.CreateTournamentDay(w, r)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
 func (h *AdminTournamentDayHandler) GetTournamentDay(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	dayID := r.PathValue("id")
 	ctx := context.Background()
 
-	type TournamentDay struct {
-		ID           int       `json:"id"`
-		TournamentID int       `json:"tournament_id"`
-		Name         string    `json:"name"`
-		DeadlineAt   time.Time `json:"deadline_at"`
-		Teams        []int     `json:"teams"`
-		RoomCount    int       `json:"room_count"`
-	}
-
-	var day TournamentDay
+	var day TournamentDayResponse
 
 	err := h.DB.QueryRow(
 		ctx,
@@ -267,7 +249,12 @@ func (h *AdminTournamentDayHandler) GetTournamentDay(w http.ResponseWriter, r *h
 	)
 
 	if err != nil {
-		http.Error(w, "Tournament day not found", http.StatusNotFound)
+		if err == pgx.ErrNoRows {
+			http.Error(w, "Tournament day not found", http.StatusNotFound)
+			return
+		}
+
+		http.Error(w, "Failed to get tournament day", http.StatusInternalServerError)
 		return
 	}
 
@@ -301,48 +288,12 @@ func (h *AdminTournamentDayHandler) GetTournamentDay(w http.ResponseWriter, r *h
 	json.NewEncoder(w).Encode(day)
 }
 
-func (h *AdminTournamentDayHandler) DeleteTournamentDay(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	dayID := r.PathValue("id")
-
-	ctx := context.Background()
-
-	result, err := h.DB.Exec(
-		ctx,
-		`DELETE FROM tournament_days
-		 WHERE id = $1`,
-		dayID,
-	)
-
-	if err != nil {
-		http.Error(w, "Failed to delete tournament day", http.StatusInternalServerError)
-		return
-	}
-
-	if result.RowsAffected() == 0 {
-		http.Error(w, "Tournament day not found", http.StatusNotFound)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (h *AdminTournamentDayHandler) UpdateTournamentDay(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPut {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	dayID := r.PathValue("id")
 
 	var request CreateTournamentDayRequest
 
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
@@ -381,9 +332,7 @@ func (h *AdminTournamentDayHandler) UpdateTournamentDay(w http.ResponseWriter, r
 	err = tx.QueryRow(
 		ctx,
 		`SELECT EXISTS(
-			SELECT 1
-			FROM tournament_days
-			WHERE id = $1
+			SELECT 1 FROM tournament_days WHERE id = $1
 		)`,
 		dayID,
 	).Scan(&exists)
@@ -472,33 +421,87 @@ func (h *AdminTournamentDayHandler) UpdateTournamentDay(w http.ResponseWriter, r
 		}
 	}
 
-	err = tx.Commit(ctx)
-	if err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		http.Error(w, "Failed to save tournament day", http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	id, _ := strconv.Atoi(dayID)
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":            dayID,
-		"tournament_id": request.TournamentID,
-		"name":          request.Name,
-		"teams":         request.Teams,
-		"room_count":    request.RoomCount,
-		"deadline_at":   request.DeadlineAt,
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(TournamentDayResponse{
+		ID:           id,
+		TournamentID: request.TournamentID,
+		Name:         request.Name,
+		Teams:        request.Teams,
+		RoomCount:    request.RoomCount,
+		DeadlineAt:   request.DeadlineAt,
 	})
 }
 
-func (h *AdminTournamentDayHandler) ManageTournamentDay(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		h.GetTournamentDay(w, r)
-	case http.MethodPut:
-		h.UpdateTournamentDay(w, r)
-	case http.MethodDelete:
-		h.DeleteTournamentDay(w, r)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+func (h *AdminTournamentDayHandler) DeleteTournamentDay(w http.ResponseWriter, r *http.Request) {
+	dayID := r.PathValue("id")
+
+	result, err := h.DB.Exec(
+		context.Background(),
+		`DELETE FROM tournament_days WHERE id = $1`,
+		dayID,
+	)
+
+	if err != nil {
+		http.Error(w, "Failed to delete tournament day", http.StatusInternalServerError)
+		return
 	}
+
+	if result.RowsAffected() == 0 {
+		http.Error(w, "Tournament day not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *AdminTournamentDayHandler) GetTournamentDayRooms(w http.ResponseWriter, r *http.Request) {
+	dayID := r.PathValue("id")
+
+	rows, err := h.DB.Query(
+		context.Background(),
+		`SELECT id, room_number
+		 FROM rooms
+		 WHERE tournament_day_id = $1
+		 ORDER BY room_number`,
+		dayID,
+	)
+
+	if err != nil {
+		http.Error(w, "Failed to get rooms", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type Room struct {
+		ID         int `json:"id"`
+		RoomNumber int `json:"room_number"`
+	}
+
+	rooms := []Room{}
+
+	for rows.Next() {
+		var room Room
+
+		if err := rows.Scan(&room.ID, &room.RoomNumber); err != nil {
+			http.Error(w, "Failed to read rooms", http.StatusInternalServerError)
+			return
+		}
+
+		rooms = append(rooms, room)
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Failed to read rooms", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(rooms)
 }
