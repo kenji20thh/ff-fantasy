@@ -6,9 +6,13 @@ import (
 
 	"ff-fantasy/database"
 	"ff-fantasy/handlers"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	godotenv.Load()
+
 	conn, err := database.Connect()
 	if err != nil {
 		fmt.Println("Error connecting to PostgreSQL:", err)

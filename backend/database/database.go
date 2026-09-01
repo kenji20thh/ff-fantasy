@@ -2,14 +2,23 @@ package database
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func Connect() (*pgxpool.Pool, error) {
+	connString := os.Getenv("DATABASE_URL")
+	if connString == "" {
+		return nil, fmt.Errorf(
+			"DATABASE_URL environment variable is not set",
+		)
+	}
+
 	pool, err := pgxpool.New(
 		context.Background(),
-		"postgres://kenji20th:MrR@b@!@localhost:5432/ff_fantasy",
+		connString,
 	)
 
 	if err != nil {
