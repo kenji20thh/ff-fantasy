@@ -300,3 +300,205 @@ func (h *AdminTournamentDayHandler) GetTournamentDay(w http.ResponseWriter, r *h
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(day)
 }
+
+func (h *AdminTournamentDayHandler) DeleteTournamentDay(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	dayID := r.PathValue("id")
+
+	ctx := context.Background()
+
+	result, err := h.DB.Exec(
+		ctx,
+		`DELETE FROM tournament_days
+		 WHERE id = $1`,
+		dayID,
+	)
+
+	if err != nil {
+		http.Error(w, "Failed to delete tournament day", http.StatusInternalServerError)
+		return
+	}
+
+	if result.RowsAffected() == 0 {
+		http.Error(w, "Tournament day not found", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *AdminTournamentDayHandler) UpdateTournamentDay(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	dayID := r.PathValue("id")
+
+	var request CreateTournamentDayRequest
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if request.TournamentID <= 0 {
+		http.Error(w, "Tournament ID is required", http.StatusBadRequest)
+		return
+	}
+
+	if request.Name == "" {
+		http.Error(w, "Name is required", http.StatusBadRequest)
+		return
+	}
+
+	if len(request.Teams) == 0 {
+		http.Error(w, "At least one team is required", http.StatusBadRequest)
+		return
+	}
+
+	if request.RoomCount <= 0 {
+		http.Error(w, "Room count must be greater than 0", http.StatusBadRequest)
+		return
+	}
+
+	ctx := context.Background()
+
+	tx, err := h.DB.Begin(ctx)
+	if err != nil {
+		http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	var exists bool
+
+	err = tx.QueryRow(
+		ctx,
+		`SELECT EXISTS(
+			SELECT 1
+			FROM tournament_days
+			WHERE id = $1
+		)`,
+		dayID,
+	).Scan(&exists)
+
+	if err != nil {
+		http.Error(w, "Failed to find tournament day", http.StatusInternalServerError)
+		return
+	}
+
+	if !exists {
+		http.Error(w, "Tournament day not found", http.StatusNotFound)
+		return
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`UPDATE tournament_days
+		 SET tournament_id = $1,
+		     name = $2,
+		     deadline_at = $3
+		 WHERE id = $4`,
+		request.TournamentID,
+		request.Name,
+		request.DeadlineAt,
+		dayID,
+	)
+
+	if err != nil {
+		http.Error(w, "Failed to update tournament day", http.StatusInternalServerError)
+		return
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`DELETE FROM tournament_day_teams
+		 WHERE tournament_day_id = $1`,
+		dayID,
+	)
+
+	if err != nil {
+		http.Error(w, "Failed to update tournament day teams", http.StatusInternalServerError)
+		return
+	}
+
+	for _, teamID := range request.Teams {
+		_, err = tx.Exec(
+			ctx,
+			`INSERT INTO tournament_day_teams
+				(tournament_day_id, team_id)
+			 VALUES ($1, $2)`,
+			dayID,
+			teamID,
+		)
+
+		if err != nil {
+			http.Error(w, "Failed to add team to tournament day", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`DELETE FROM rooms
+		 WHERE tournament_day_id = $1`,
+		dayID,
+	)
+
+	if err != nil {
+		http.Error(w, "Failed to update rooms", http.StatusInternalServerError)
+		return
+	}
+
+	for roomNumber := 1; roomNumber <= request.RoomCount; roomNumber++ {
+		_, err = tx.Exec(
+			ctx,
+			`INSERT INTO rooms
+				(tournament_day_id, room_number)
+			 VALUES ($1, $2)`,
+			dayID,
+			roomNumber,
+		)
+
+		if err != nil {
+			http.Error(w, "Failed to create rooms", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		http.Error(w, "Failed to save tournament day", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":            dayID,
+		"tournament_id": request.TournamentID,
+		"name":          request.Name,
+		"teams":         request.Teams,
+		"room_count":    request.RoomCount,
+		"deadline_at":   request.DeadlineAt,
+	})
+}
+
+func (h *AdminTournamentDayHandler) ManageTournamentDay(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.GetTournamentDay(w, r)
+	case http.MethodPut:
+		h.UpdateTournamentDay(w, r)
+	case http.MethodDelete:
+		h.DeleteTournamentDay(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}

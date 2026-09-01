@@ -133,7 +133,7 @@ func main() {
 		handlers.RequireAdmin(
 			conn,
 			sessionStore,
-			adminTournamentDayHandler.GetTournamentDay,
+			adminTournamentDayHandler.ManageTournamentDay,
 		),
 	)
 
