@@ -221,3 +221,14 @@ func (h *AdminTournamentDayHandler) GetTournamentDays(w http.ResponseWriter, r *
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(days)
 }
+
+func (h *AdminTournamentDayHandler) ManageTournamentDays(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.GetTournamentDays(w, r)
+	case http.MethodPost:
+		h.CreateTournamentDay(w, r)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}

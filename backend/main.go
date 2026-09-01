@@ -124,19 +124,9 @@ func main() {
 		handlers.RequireAdmin(
 			conn,
 			sessionStore,
-			adminTournamentDayHandler.CreateTournamentDay,
+			adminTournamentDayHandler.ManageTournamentDays,
 		),
 	)
-
-	http.HandleFunc(
-		"/api/admin/tournament-days",
-		handlers.RequireAdmin(
-			conn,
-			sessionStore,
-			adminTournamentDayHandler.GetTournamentDays,
-		),
-	)
-
 	fmt.Println("Server running on http://localhost:8080")
 
 	err = http.ListenAndServe(":8080", nil)
