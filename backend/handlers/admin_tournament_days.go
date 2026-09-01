@@ -232,3 +232,71 @@ func (h *AdminTournamentDayHandler) ManageTournamentDays(w http.ResponseWriter, 
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
+
+func (h *AdminTournamentDayHandler) GetTournamentDay(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	dayID := r.PathValue("id")
+	ctx := context.Background()
+
+	type TournamentDay struct {
+		ID           int       `json:"id"`
+		TournamentID int       `json:"tournament_id"`
+		Name         string    `json:"name"`
+		DeadlineAt   time.Time `json:"deadline_at"`
+		Teams        []int     `json:"teams"`
+		RoomCount    int       `json:"room_count"`
+	}
+
+	var day TournamentDay
+
+	err := h.DB.QueryRow(
+		ctx,
+		`SELECT id, tournament_id, name, deadline_at
+		 FROM tournament_days
+		 WHERE id = $1`,
+		dayID,
+	).Scan(
+		&day.ID,
+		&day.TournamentID,
+		&day.Name,
+		&day.DeadlineAt,
+	)
+
+	if err != nil {
+		http.Error(w, "Tournament day not found", http.StatusNotFound)
+		return
+	}
+
+	err = h.DB.QueryRow(
+		ctx,
+		`SELECT COALESCE(array_agg(team_id ORDER BY team_id), '{}')
+		 FROM tournament_day_teams
+		 WHERE tournament_day_id = $1`,
+		day.ID,
+	).Scan(&day.Teams)
+
+	if err != nil {
+		http.Error(w, "Failed to get tournament day teams", http.StatusInternalServerError)
+		return
+	}
+
+	err = h.DB.QueryRow(
+		ctx,
+		`SELECT COUNT(*)
+		 FROM rooms
+		 WHERE tournament_day_id = $1`,
+		day.ID,
+	).Scan(&day.RoomCount)
+
+	if err != nil {
+		http.Error(w, "Failed to get room count", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(day)
+}
