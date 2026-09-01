@@ -53,3 +53,10 @@ func (s *SessionStore) SetCookie(w http.ResponseWriter, sessionID string) {
 		Path:     "/",
 	})
 }
+
+func (s *SessionStore) Delete(sessionID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.sessions, sessionID)
+}
