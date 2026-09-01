@@ -132,3 +132,92 @@ func (h *AdminTournamentDayHandler) CreateTournamentDay(w http.ResponseWriter, r
 		"deadline_at":   request.DeadlineAt,
 	})
 }
+
+func (h *AdminTournamentDayHandler) GetTournamentDays(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := context.Background()
+
+	rows, err := h.DB.Query(
+		ctx,
+		`SELECT
+			td.id,
+			td.tournament_id,
+			td.name,
+			td.deadline_at
+		FROM tournament_days td
+		ORDER BY td.id`,
+	)
+	if err != nil {
+		http.Error(w, "Failed to get tournament days", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type TournamentDay struct {
+		ID           int       `json:"id"`
+		TournamentID int       `json:"tournament_id"`
+		Name         string    `json:"name"`
+		DeadlineAt   time.Time `json:"deadline_at"`
+		Teams        []int     `json:"teams"`
+		RoomCount    int       `json:"room_count"`
+	}
+
+	var days []TournamentDay
+
+	for rows.Next() {
+		var day TournamentDay
+
+		err := rows.Scan(
+			&day.ID,
+			&day.TournamentID,
+			&day.Name,
+			&day.DeadlineAt,
+		)
+		if err != nil {
+			http.Error(w, "Failed to read tournament days", http.StatusInternalServerError)
+			return
+		}
+
+		err = h.DB.QueryRow(
+			ctx,
+			`SELECT COALESCE(array_agg(team_id ORDER BY team_id), '{}')
+			 FROM tournament_day_teams
+			 WHERE tournament_day_id = $1`,
+			day.ID,
+		).Scan(&day.Teams)
+		if err != nil {
+			http.Error(w, "Failed to get tournament day teams", http.StatusInternalServerError)
+			return
+		}
+
+		err = h.DB.QueryRow(
+			ctx,
+			`SELECT COUNT(*)
+			 FROM rooms
+			 WHERE tournament_day_id = $1`,
+			day.ID,
+		).Scan(&day.RoomCount)
+		if err != nil {
+			http.Error(w, "Failed to get room count", http.StatusInternalServerError)
+			return
+		}
+
+		days = append(days, day)
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Failed to read tournament days", http.StatusInternalServerError)
+		return
+	}
+
+	if days == nil {
+		days = []TournamentDay{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(days)
+}
