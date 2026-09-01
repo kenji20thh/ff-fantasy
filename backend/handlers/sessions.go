@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"sync"
 )
@@ -68,9 +69,8 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cookie, err := r.Cookie("session_id")
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
+	if err == nil {
+		h.Sessions.Delete(cookie.Value)
 	}
 
 	http.SetCookie(w, &http.Cookie{
@@ -82,4 +82,8 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 	})
 
-	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Logged out successfully",
+	})
+}
