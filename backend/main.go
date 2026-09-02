@@ -46,6 +46,10 @@ func main() {
 		DB: conn,
 	}
 
+	playerHandler := &handlers.PlayerHandler{
+		DB: conn,
+	}
+
 	sessionStore := handlers.NewSessionStore()
 
 	fantasyTeamHandler := &handlers.FantasyTeamHandler{
@@ -80,6 +84,7 @@ func main() {
 
 	http.HandleFunc("/api/teams", teamHandler.GetTeams)
 	http.HandleFunc("/api/teams/{id}/players", teamHandler.GetPlayers)
+	http.HandleFunc("/api/players/{id}/stats", playerHandler.GetPlayerStats)
 
 	http.HandleFunc("/api/fantasy-teams", fantasyTeamHandler.CreateFantasyTeam)
 	http.HandleFunc("/api/fantasy-teams/{id}", fantasyTeamHandler.GetFantasyTeam)
