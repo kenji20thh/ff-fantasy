@@ -95,16 +95,18 @@ func (h *AdminPlayerHandler) UpdatePlayer(w http.ResponseWriter, r *http.Request
 	err = h.DB.QueryRow(
 		context.Background(),
 		`UPDATE players
-		 SET team_id = $1, nickname = $2
-		 WHERE id = $3
-		 RETURNING id, team_id, nickname`,
+	 SET team_id = $1, nickname = $2, picture_url = $3
+	 WHERE id = $4
+	 RETURNING id, team_id, nickname, picture_url`,
 		request.TeamID,
 		request.Nickname,
+		request.PictureURL,
 		playerID,
 	).Scan(
 		&player.ID,
 		&player.TeamID,
 		&player.Nickname,
+		&player.PictureURL,
 	)
 
 	if err != nil {
