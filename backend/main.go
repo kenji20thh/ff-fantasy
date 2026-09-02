@@ -75,6 +75,21 @@ func main() {
 	http.HandleFunc("/api/me", authHandler.Me)
 
 	http.HandleFunc(
+		"/api/tournament-days",
+		adminTournamentDayHandler.GetTournamentDays,
+	)
+
+	http.HandleFunc(
+		"/api/tournament-days/{id}",
+		adminTournamentDayHandler.GetTournamentDay,
+	)
+
+	http.HandleFunc(
+		"/api/tournament-days/{id}/rooms",
+		adminTournamentDayHandler.GetTournamentDayRooms,
+	)
+
+	http.HandleFunc(
 		"/api/admin/teams",
 		handlers.RequireAdmin(
 			conn,
@@ -134,15 +149,6 @@ func main() {
 			conn,
 			sessionStore,
 			adminTournamentDayHandler.ManageTournamentDay,
-		),
-	)
-
-	http.HandleFunc(
-		"/api/admin/tournament-days/{id}/rooms",
-		handlers.RequireAdmin(
-			conn,
-			sessionStore,
-			adminTournamentDayHandler.GetTournamentDayRooms,
 		),
 	)
 
