@@ -22,7 +22,8 @@ func (h *AdminTeamHandler) CreateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request struct {
-		Name string `json:"name"`
+		Name    string `json:"name"`
+		LogoURL string `json:"logo_url"`
 	}
 
 	err := json.NewDecoder(r.Body).Decode(&request)
@@ -40,9 +41,16 @@ func (h *AdminTeamHandler) CreateTeam(w http.ResponseWriter, r *http.Request) {
 
 	err = h.DB.QueryRow(
 		context.Background(),
-		"INSERT INTO teams (name) VALUES ($1) RETURNING id, name",
+		`INSERT INTO teams (name, logo_url)
+	 VALUES ($1, $2)
+	 RETURNING id, name, logo_url`,
 		request.Name,
-	).Scan(&team.ID, &team.Name)
+		request.LogoURL,
+	).Scan(
+		&team.ID,
+		&team.Name,
+		&team.LogoURL,
+	)
 
 	if err != nil {
 		http.Error(w, "Failed to create team", http.StatusInternalServerError)
