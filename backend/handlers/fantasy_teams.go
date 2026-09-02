@@ -631,3 +631,89 @@ func isTransferWindowOpen(ctx context.Context, db *pgxpool.Pool) (bool, error) {
 
 	return openCount > 0, nil
 }
+
+func (h *FantasyTeamHandler) GetMyFantasyTeam(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cookie, err := r.Cookie("session_id")
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, exists := h.Sessions.GetUserID(cookie.Value)
+	if !exists {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var fantasyTeam models.FantasyTeam
+	var captainPlayerID *int
+
+	err = h.DB.QueryRow(
+		context.Background(),
+		`SELECT id, user_id, captain_player_id
+		 FROM fantasy_teams
+		 WHERE user_id = $1`,
+		userID,
+	).Scan(
+		&fantasyTeam.ID,
+		&fantasyTeam.UserID,
+		&captainPlayerID,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			http.Error(w, "Fantasy team not found", http.StatusNotFound)
+			return
+		}
+
+		http.Error(w, "Failed to get fantasy team", http.StatusInternalServerError)
+		return
+	}
+
+	var playerIDs []int
+
+	rows, err := h.DB.Query(
+		context.Background(),
+		`SELECT player_id
+		 FROM fantasy_team_players
+		 WHERE fantasy_team_id = $1
+		 ORDER BY player_id`,
+		fantasyTeam.ID,
+	)
+
+	if err != nil {
+		http.Error(w, "Failed to get selected players", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var playerID int
+
+		if err := rows.Scan(&playerID); err != nil {
+			http.Error(w, "Failed to read player", http.StatusInternalServerError)
+			return
+		}
+
+		playerIDs = append(playerIDs, playerID)
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Error reading players", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":                fantasyTeam.ID,
+		"user_id":           fantasyTeam.UserID,
+		"player_ids":        playerIDs,
+		"captain_player_id": captainPlayerID,
+	})
+}
