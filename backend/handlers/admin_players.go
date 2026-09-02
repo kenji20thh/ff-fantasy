@@ -22,8 +22,9 @@ func (h *AdminPlayerHandler) CreatePlayer(w http.ResponseWriter, r *http.Request
 	}
 
 	var request struct {
-		TeamID   int    `json:"team_id"`
-		Nickname string `json:"nickname"`
+		TeamID     int    `json:"team_id"`
+		Nickname   string `json:"nickname"`
+		PictureURL string `json:"picture_url"`
 	}
 
 	err := json.NewDecoder(r.Body).Decode(&request)
@@ -41,15 +42,17 @@ func (h *AdminPlayerHandler) CreatePlayer(w http.ResponseWriter, r *http.Request
 
 	err = h.DB.QueryRow(
 		context.Background(),
-		`INSERT INTO players (team_id, nickname)
-		 VALUES ($1, $2)
-		 RETURNING id, team_id, nickname`,
+		`INSERT INTO players (team_id, nickname, picture_url)
+	 VALUES ($1, $2, $3)
+	 RETURNING id, team_id, nickname, picture_url`,
 		request.TeamID,
 		request.Nickname,
+		request.PictureURL,
 	).Scan(
 		&player.ID,
 		&player.TeamID,
 		&player.Nickname,
+		&player.PictureURL,
 	)
 
 	if err != nil {
@@ -71,8 +74,9 @@ func (h *AdminPlayerHandler) UpdatePlayer(w http.ResponseWriter, r *http.Request
 	playerID := r.PathValue("id")
 
 	var request struct {
-		TeamID   int    `json:"team_id"`
-		Nickname string `json:"nickname"`
+		TeamID     int    `json:"team_id"`
+		Nickname   string `json:"nickname"`
+		PictureURL string `json:"picture_url"`
 	}
 
 	err := json.NewDecoder(r.Body).Decode(&request)
