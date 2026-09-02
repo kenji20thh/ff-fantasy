@@ -73,6 +73,9 @@ export const api = {
   fantasyPoints: (id: number) =>
     apiFetch(`/api/fantasy-teams/${id}/points`),
 
+  myFantasyTeam: () =>
+    apiFetch('/api/fantasy-teams/mine'),
+
   createFantasy: (user_id: number) =>
     apiFetch('/api/fantasy-teams', {
       method: 'POST',

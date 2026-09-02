@@ -1,248 +1,254 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { api } from '@/lib/api'
-import { useAuth } from '@/lib/auth'
-import { asArray, errorMessage } from '@/lib/types'
-import type { Player, Team } from '@/lib/types'
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { asArray, errorMessage } from "@/lib/types";
+import type { Player, Team } from "@/lib/types";
+
+type MyFantasyTeam = {
+  id: number;
+  user_id: number;
+  player_ids: number[];
+  captain_player_id?: number | null;
+};
+
+type FantasyPoints = {
+  fantasy_team_id: number;
+  total_points: number;
+};
 
 export default function FantasyTeam() {
-  const { user } = useAuth()
+  const { user } = useAuth();
 
-  const [teams, setTeams] = useState<Team[]>([])
-  const [players, setPlayers] = useState<Player[]>([])
-  const [selected, setSelected] = useState<Player[]>([])
-  const [captain, setCaptain] = useState<number>()
-  const [fantasyId, setFantasyId] = useState<number>()
-  const [selectedTeam, setSelectedTeam] = useState<number | null>(null)
-  const [message, setMessage] = useState('')
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [myTeam, setMyTeam] = useState<MyFantasyTeam | null>(null);
+  const [points, setPoints] = useState<FantasyPoints | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
-    api.teams()
-      .then(x => {
-        const ts = asArray<Team>(x)
-        setTeams(ts)
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-        return Promise.all(
-          ts.map(t => api.players(t.id))
-        )
-      })
-      .then(xs => {
+    async function load() {
+      try {
+        setLoading(true);
+
+        const fantasy = (await api.myFantasyTeam()) as MyFantasyTeam;
+
+        setMyTeam(fantasy);
+
+        const [teamsResponse, ...playerResponses] = await Promise.all([
+          api.teams(),
+          ...((await api.teams()) as unknown[]).map(async (team) => {
+            const t = team as Team;
+            return api.players(t.id);
+          }),
+        ]);
+
+        const loadedTeams = asArray<Team>(teamsResponse);
+
+        setTeams(loadedTeams);
+
         setPlayers(
-          xs.flatMap(x => asArray<Player>(x))
-        )
-      })
-      .catch(e => setMessage(errorMessage(e)))
-  }, [])
+          playerResponses.flatMap((response) => asArray<Player>(response)),
+        );
 
-  function toggle(p: Player) {
-    if (selected.some(x => x.id === p.id)) {
-      setSelected(
-        selected.filter(x => x.id !== p.id)
-      )
-
-      if (captain === p.id) {
-        setCaptain(undefined)
-      }
-
-      return
-    }
-
-    if (selected.length >= 4) {
-      setMessage('You can only select four players.')
-      return
-    }
-
-    if (selected.some(x => x.team_id === p.team_id)) {
-      setMessage(
-        'Choose four players from four different teams.'
-      )
-      return
-    }
-
-    setSelected([...selected, p])
-    setMessage('')
-  }
-
-  async function save() {
-    try {
-      if (!user) {
-        throw Error('Sign in before saving your fantasy team.')
-      }
-
-      if (selected.length !== 4) {
-        throw Error('Select exactly four players.')
-      }
-
-      const team = fantasyId
-        ? { fantasy_team_id: fantasyId }
-        : await api.createFantasy(user.id) as { fantasy_team_id: number }
-
-      setFantasyId(team.fantasy_team_id)
-
-      await api.selectPlayers(
-        team.fantasy_team_id,
-        {
-          player_ids: selected.map(p => p.id),
+        try {
+          const fantasyPoints = (await api.fantasyPoints(
+            fantasy.id,
+          )) as FantasyPoints;
+          setPoints(fantasyPoints);
+        } catch {
+          setPoints(null);
         }
-      )
+      } catch (e) {
+        const error = e as { status?: number };
 
-      if (captain) {
-        await api.captain(
-          team.fantasy_team_id,
-          captain
-        )
+        if (error.status === 404) {
+          setMyTeam(null);
+          return;
+        }
+
+        setMessage(errorMessage(e));
+      } finally {
+        setLoading(false);
       }
-
-      setMessage('Fantasy team saved successfully.')
-    } catch (e) {
-      setMessage(errorMessage(e))
     }
+
+    load();
+  }, [user]);
+
+  if (!user) {
+    return (
+      <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
+        <a href="/" className="eyebrow">
+          ← FF / FANTASY
+        </a>
+
+        <div className="mt-16 max-w-2xl">
+          <p className="eyebrow">Fantasy</p>
+
+          <h1 className="section-title mt-4">
+            Sign in to build your fantasy team.
+          </h1>
+        </div>
+      </main>
+    );
   }
 
-  const visiblePlayers = players.filter(
-    p =>
-      selectedTeam === null ||
-      p.team_id === selectedTeam
-  )
+  if (loading) {
+    return (
+      <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
+        <a href="/" className="eyebrow">
+          ← FF / FANTASY
+        </a>
 
+        <p className="mt-12 text-muted-foreground">
+          Loading your fantasy team...
+        </p>
+      </main>
+    );
+  }
+
+  if (message) {
+    return (
+      <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
+        <a href="/" className="eyebrow">
+          ← FF / FANTASY
+        </a>
+
+        <p className="mt-12 border border-red-500/40 bg-card p-4 text-sm text-red-400">
+          {message}
+        </p>
+      </main>
+    );
+  }
+
+  /*
+   * User already has a fantasy team.
+   * DO NOT show the player selection screen.
+   */
+  if (myTeam) {
+    const selectedPlayers = (myTeam.player_ids ?? [])
+      .map((id) => players.find((player) => player.id === id))
+      .filter((player): player is Player => player !== undefined);
+
+    return (
+      <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
+        <a href="/" className="eyebrow">
+          ← FF / FANTASY
+        </a>
+
+        <div className="mt-8 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="eyebrow">Your fantasy team</p>
+
+            <h1 className="section-title mt-2">Your squad.</h1>
+          </div>
+
+          {points && (
+            <div className="text-right">
+              <p className="text-xs uppercase text-muted-foreground">
+                Total points
+              </p>
+
+              <p className="font-mono text-3xl font-bold text-primary">
+                {points.total_points}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <section className="mt-10">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-mono text-lg font-bold uppercase">
+              Selected players
+            </h2>
+
+            <span className="text-xs text-muted-foreground">
+              {selectedPlayers.length} / 4
+            </span>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {selectedPlayers.map((player) => {
+              const team = teams.find((team) => team.id === player.team_id);
+
+              const isCaptain = myTeam.captain_player_id === player.id;
+
+              return (
+                <div
+                  key={player.id}
+                  className={`border p-5 ${
+                    isCaptain
+                      ? "border-primary bg-primary/10"
+                      : "border-border bg-card"
+                  }`}
+                >
+                  <span className="text-xs text-muted-foreground">
+                    {team?.name || `Team ${player.team_id}`}
+                  </span>
+
+                  <strong className="mt-5 block font-mono uppercase">
+                    {player.nickname}
+                  </strong>
+
+                  {isCaptain && (
+                    <span className="mt-3 block text-xs font-bold uppercase text-primary">
+                      Captain
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="mt-10 border-t border-border pt-8">
+          <Link
+            href={`/fantasy-team/${myTeam.id}`}
+            className="inline-block bg-primary px-6 py-3 font-bold text-primary-foreground"
+          >
+            View full fantasy team
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
+  /*
+   * User doesn't have a fantasy team.
+   * Send them to the builder.
+   */
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
       <a href="/" className="eyebrow">
         ← FF / FANTASY
       </a>
 
-      <div className="mt-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="eyebrow">
-            Fantasy builder
-          </p>
+      <div className="mt-16 max-w-2xl">
+        <p className="eyebrow">Fantasy</p>
 
-          <h1 className="section-title">
-            Draft your squad.
-          </h1>
-        </div>
+        <h1 className="section-title mt-4">Build your fantasy team.</h1>
 
-        <span className="font-mono text-sm text-primary">
-          {selected.length} / 4 selected
-        </span>
-      </div>
-
-      {message && (
-        <p className="mt-6 border border-primary/40 bg-card p-4 text-sm">
-          {message}
-        </p>
-      )}
-
-      {/* Team filter */}
-      <div className="mt-8">
-        <p className="mb-3 text-xs font-bold uppercase text-muted-foreground">
-          Select a team
+        <p className="mt-6 text-muted-foreground">
+          Select four players from four different teams and choose your captain.
         </p>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setSelectedTeam(null)}
-            className={`border px-4 py-2 text-sm font-bold ${
-              selectedTeam === null
-                ? 'border-primary bg-primary/10'
-                : 'border-border bg-card'
-            }`}
-          >
-            All Teams
-          </button>
-
-          {teams.map(team => (
-            <button
-              type="button"
-              key={team.id}
-              onClick={() => {
-                setSelectedTeam(team.id)
-                setMessage('')
-              }}
-              className={`border px-4 py-2 text-sm font-bold ${
-                selectedTeam === team.id
-                  ? 'border-primary bg-primary/10'
-                  : 'border-border bg-card'
-              }`}
-            >
-              {team.name}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Players */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {visiblePlayers.map(p => {
-          const isSelected = selected.some(
-            x => x.id === p.id
-          )
-
-          return (
-            <button
-              type="button"
-              key={p.id}
-              onClick={() => toggle(p)}
-              className={`border p-5 text-left ${
-                isSelected
-                  ? 'border-primary bg-primary/10'
-                  : 'border-border bg-card'
-              }`}
-            >
-              <span className="text-xs text-muted-foreground">
-                Team {teams.find(
-                  t => t.id === p.team_id
-                )?.name || p.team_id}
-              </span>
-
-              <strong className="mt-5 block font-mono uppercase">
-                {p.nickname}
-              </strong>
-
-              {isSelected && (
-                <span className="mt-3 block text-xs font-bold uppercase text-primary">
-                  Selected
-                </span>
-              )}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Captain */}
-      <section className="mt-12 border-t border-border pt-8">
-        <h2 className="font-mono text-lg font-bold uppercase">
-          Captain
-        </h2>
-
-        <div className="mt-4 flex flex-wrap gap-4">
-          {selected.map(p => (
-            <label
-              key={p.id}
-              className="flex items-center gap-2 text-sm"
-            >
-              <input
-                type="radio"
-                name="captain"
-                checked={captain === p.id}
-                onChange={() => setCaptain(p.id)}
-              />
-
-              {p.nickname}
-            </label>
-          ))}
-        </div>
-
-        <button
-          onClick={save}
-          className="mt-8 bg-primary px-6 py-3 font-bold text-primary-foreground"
+        <Link
+          href="/fantasy-team/builder"
+          className="mt-8 inline-block bg-primary px-6 py-3 font-bold text-primary-foreground"
         >
-          Save fantasy team
-        </button>
-      </section>
+          Create Fantasy Team
+        </Link>
+      </div>
     </main>
-  )
+  );
 }
-
