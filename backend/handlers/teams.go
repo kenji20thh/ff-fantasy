@@ -17,7 +17,7 @@ type TeamHandler struct {
 func (h *TeamHandler) GetTeams(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.DB.Query(
 		context.Background(),
-		"SELECT id, name FROM teams",
+		"SELECT id, name, logo_url FROM teams",
 	)
 	if err != nil {
 		http.Error(w, "Failed to get teams", http.StatusInternalServerError)
@@ -30,7 +30,11 @@ func (h *TeamHandler) GetTeams(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var team models.Team
 
-		err := rows.Scan(&team.ID, &team.Name)
+		err := rows.Scan(
+			&team.ID,
+			&team.Name,
+			&team.LogoURL,
+		)
 		if err != nil {
 			http.Error(w, "Failed to read team", http.StatusInternalServerError)
 			return
