@@ -1,8 +1,0 @@
-"use client"
-import Link from "next/link"
-import { CalendarDays,ChevronRight,Clock,DoorOpen } from "lucide-react"
-import { useEffect,useState } from "react"
-import { api } from "@/lib/api"
-import type { TournamentDay } from "@/lib/types"
-import { Card, ErrorBox, Loading, PageTitle } from "@/components/ui"
-export default function SchedulePage(){const [days,setDays]=useState<TournamentDay[]>([]);const [error,setError]=useState<unknown>(null);useEffect(()=>{api.tournamentDays().then(setDays).catch(setError)},[]);return <main className="mx-auto max-w-7xl px-5 py-16 lg:px-8"><PageTitle eyebrow="Tournament" title="Schedule" description="Tournament days, deadlines and rooms are public. Admins control changes; everyone can follow the schedule."/><div className="mt-10">{error?<ErrorBox error={error}/>:!days.length?<Loading label="No tournament days yet."/>:<div className="space-y-4">{days.map(day=><Link href={`/schedule/${day.id}`} key={day.id}><Card className="group p-6 transition hover:border-[#f4d35e]/40"><div className="flex flex-col gap-6 md:flex-row md:items-center"><div className="grid size-14 shrink-0 place-items-center rounded-2xl bg-[#f4d35e]/10"><CalendarDays className="text-[#f4d35e]"/></div><div className="min-w-0 flex-1"><h2 className="font-mono text-xl font-bold">{day.name}</h2><div className="mt-3 flex flex-wrap gap-4 text-sm text-zinc-500"><span className="flex items-center gap-2"><Clock className="size-4"/>{new Date(day.deadline_at).toLocaleString()}</span><span className="flex items-center gap-2"><DoorOpen className="size-4"/>{day.room_count} rooms</span></div></div><ChevronRight className="hidden size-5 text-zinc-600 transition group-hover:translate-x-1 group-hover:text-[#f4d35e] md:block"/></div></Card></Link>)}</div>}</div></main>}
