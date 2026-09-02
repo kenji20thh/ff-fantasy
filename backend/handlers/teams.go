@@ -57,7 +57,9 @@ func (h *TeamHandler) GetPlayers(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.DB.Query(
 		context.Background(),
-		"SELECT id, team_id, nickname FROM players WHERE team_id = $1",
+		`SELECT id, team_id, nickname, picture_url
+		 FROM players
+		 WHERE team_id = $1`,
 		teamID,
 	)
 	if err != nil {
@@ -75,6 +77,7 @@ func (h *TeamHandler) GetPlayers(w http.ResponseWriter, r *http.Request) {
 			&player.ID,
 			&player.TeamID,
 			&player.Nickname,
+			&player.PictureURL,
 		)
 		if err != nil {
 			http.Error(w, "Failed to read player", http.StatusInternalServerError)
