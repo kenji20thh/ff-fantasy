@@ -71,7 +71,8 @@ func (h *AdminTeamHandler) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 	teamID := r.PathValue("id")
 
 	var request struct {
-		Name string `json:"name"`
+		Name    string `json:"name"`
+		LogoURL string `json:"logo_url"`
 	}
 
 	err := json.NewDecoder(r.Body).Decode(&request)
@@ -90,12 +91,17 @@ func (h *AdminTeamHandler) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 	err = h.DB.QueryRow(
 		context.Background(),
 		`UPDATE teams
-		 SET name = $1
-		 WHERE id = $2
-		 RETURNING id, name`,
+	 SET name = $1, logo_url = $2
+	 WHERE id = $3
+	 RETURNING id, name, logo_url`,
 		request.Name,
+		request.LogoURL,
 		teamID,
-	).Scan(&team.ID, &team.Name)
+	).Scan(
+		&team.ID,
+		&team.Name,
+		&team.LogoURL,
+	)
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
