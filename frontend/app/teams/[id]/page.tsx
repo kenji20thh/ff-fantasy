@@ -1,34 +1,29 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
-import Link from 'next/link'
-import { api } from '@/lib/api'
-import { asArray, errorMessage } from '@/lib/types'
-import type { Player, Team } from '@/lib/types'
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import { api } from "@/lib/api";
+import { asArray, errorMessage } from "@/lib/types";
+import type { Player, Team } from "@/lib/types";
 
 export default function TeamDetail() {
-  const { id } = useParams<{ id: string }>()
+  const { id } = useParams<{ id: string }>();
 
-  const [players, setPlayers] = useState<Player[]>([])
-  const [team, setTeam] = useState<Team | null>(null)
-  const [error, setError] = useState('')
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [team, setTeam] = useState<Team | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const teamId = Number(id)
+    const teamId = Number(id);
 
-    Promise.all([
-      api.players(teamId),
-      api.teams(),
-    ])
+    Promise.all([api.players(teamId), api.teams()])
       .then(([p, t]) => {
-        setPlayers(asArray<Player>(p))
-        setTeam(
-          asArray<Team>(t).find(x => x.id === teamId) || null
-        )
+        setPlayers(asArray<Player>(p));
+        setTeam(asArray<Team>(t).find((x) => x.id === teamId) || null);
       })
-      .catch(e => setError(errorMessage(e)))
-  }, [id])
+      .catch((e) => setError(errorMessage(e)));
+  }, [id]);
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-5 py-10">
@@ -36,15 +31,9 @@ export default function TeamDetail() {
         ← Teams
       </Link>
 
-      <h1 className="section-title mt-8">
-        {team?.name || `Team ${id}`}
-      </h1>
+      <h1 className="section-title mt-8">{team?.name || `Team ${id}`}</h1>
 
-      {error && (
-        <p className="mt-8 text-red-400">
-          {error}
-        </p>
-      )}
+      {error && <p className="mt-8 text-red-400">{error}</p>}
 
       <section className="mt-10 border-t border-border">
         {!error && !players.length && (
@@ -53,10 +42,11 @@ export default function TeamDetail() {
           </p>
         )}
 
-        {players.map(player => (
-          <div
+        {players.map((player) => (
+          <Link
             key={player.id}
-            className="flex items-center justify-between border-b border-border py-5"
+            href={`/players/${player.id}`}
+            className="flex items-center justify-between border-b border-border py-5 hover:bg-muted/30"
           >
             <span className="font-mono font-bold uppercase">
               {player.nickname}
@@ -65,9 +55,9 @@ export default function TeamDetail() {
             <span className="text-xs text-muted-foreground">
               Player #{player.id}
             </span>
-          </div>
+          </Link>
         ))}
       </section>
     </main>
-  )
+  );
 }

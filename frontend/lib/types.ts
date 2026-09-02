@@ -118,3 +118,33 @@ export function dateLabel(value?: string) {
         timeStyle: 'short',
       })
 }
+
+export type PlayerRoomStat = {
+  room_id: number
+  room_number: number
+  kills: number
+  assists: number
+  first_blood: boolean
+  placement: number
+  points: number
+}
+
+export type PlayerDayTotal = {
+  kills: number
+  assists: number
+  first_blood: number
+  points: number
+}
+
+export type PlayerDayStats = {
+  id: number
+  name: string
+  rooms: PlayerRoomStat[]
+  total: PlayerDayTotal
+}
+
+export type PlayerStatsResponse = {
+  player: Player
+  days: PlayerDayStats[]
+  total: PlayerDayTotal
+}
