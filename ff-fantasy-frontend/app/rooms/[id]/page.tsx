@@ -1,0 +1,8 @@
+"use client"
+import Link from "next/link"
+import { ArrowLeft } from "lucide-react"
+import { useEffect,useState } from "react"
+import { api } from "@/lib/api"
+import type { RoomStat } from "@/lib/types"
+import { Card, ErrorBox, Loading } from "@/components/ui"
+export default function RoomPage({params}:{params:Promise<{id:string}>}){const [stats,setStats]=useState<RoomStat[]>([]);const [error,setError]=useState<unknown>(null);const [id,setId]=useState("");useEffect(()=>{params.then(({id})=>{setId(id);return api.roomStats(Number(id))}).then(setStats).catch(setError)},[params]);return <main className="mx-auto max-w-5xl px-5 py-16 lg:px-8"><Link href="/schedule" className="inline-flex items-center gap-2 text-sm text-zinc-500 hover:text-white"><ArrowLeft className="size-4"/> Schedule</Link><div className="mt-10"><p className="text-xs font-bold uppercase tracking-[.2em] text-[#f4d35e]">Public room stats</p><h1 className="mt-3 font-mono text-5xl font-black">Room {id}</h1></div><div className="mt-10">{error?<ErrorBox error={error}/>:!stats.length?<Loading label="No stats have been entered for this room yet."/>:<Card className="overflow-hidden"><div className="grid grid-cols-5 border-b border-white/10 px-4 py-4 text-xs font-bold uppercase tracking-widest text-zinc-600"><span>Player</span><span>Kills</span><span>Assists</span><span>First blood</span><span>Placement</span></div>{stats.map(s=><div key={s.player_id} className="grid grid-cols-5 border-b border-white/10 px-4 py-4 text-sm last:border-0"><span className="font-mono">#{s.player_id}</span><span>{s.kills}</span><span>{s.assists}</span><span>{s.first_blood?"Yes":"—"}</span><span>{s.placement}</span></div>)}</Card>}</div></main>}

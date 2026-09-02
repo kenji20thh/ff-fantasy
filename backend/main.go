@@ -10,6 +10,26 @@ import (
 	"github.com/joho/godotenv"
 )
 
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set(
+			"Access-Control-Allow-Methods",
+			"GET, POST, PUT, DELETE, OPTIONS",
+		)
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		// Handle CORS preflight requests.
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	godotenv.Load()
 
@@ -66,6 +86,7 @@ func main() {
 	http.HandleFunc("/api/fantasy-teams/{id}/players", fantasyTeamHandler.SelectPlayers)
 	http.HandleFunc("/api/fantasy-teams/{id}/captain", fantasyTeamHandler.SetCaptain)
 	http.HandleFunc("/api/fantasy-teams/{id}/points", fantasyTeamHandler.GetFantasyTeamPoints)
+
 	http.HandleFunc("/api/rooms/{id}/stats", teamHandler.GetRoomStats)
 	http.HandleFunc("/api/leaderboard", leaderboardHandler.GetLeaderboard)
 
@@ -154,8 +175,7 @@ func main() {
 
 	fmt.Println("Server running on http://localhost:8080")
 
-	err = http.ListenAndServe(":8080", nil)
-	if err != nil {
+	if err := http.ListenAndServe(":8080", corsMiddleware(http.DefaultServeMux)); err != nil {
 		fmt.Println(err)
 	}
 }

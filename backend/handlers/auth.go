@@ -6,12 +6,11 @@ import (
 	"errors"
 	"net/http"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"ff-fantasy/models"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthHandler struct {
@@ -31,8 +30,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
@@ -57,7 +55,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		context.Background(),
 		`INSERT INTO users (username, email, password_hash)
 		 VALUES ($1, $2, $3)
-		 RETURNING id, username, email`,
+		 RETURNING id, username, email, role`,
 		request.Username,
 		request.Email,
 		string(passwordHash),
@@ -65,6 +63,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		&user.ID,
 		&user.Username,
 		&user.Email,
+		&user.Role,
 	)
 
 	if err != nil {
@@ -96,8 +95,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 
-	err := json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
@@ -110,15 +108,18 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	var passwordHash string
 
-	err = h.DB.QueryRow(
+	err := h.DB.QueryRow(
 		context.Background(),
-		"SELECT id, username, email, password_hash FROM users WHERE email = $1",
+		`SELECT id, username, email, password_hash, role
+		 FROM users
+		 WHERE email = $1`,
 		request.Email,
 	).Scan(
 		&user.ID,
 		&user.Username,
 		&user.Email,
 		&passwordHash,
+		&user.Role,
 	)
 
 	if err != nil {
@@ -126,11 +127,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = bcrypt.CompareHashAndPassword(
+	if err := bcrypt.CompareHashAndPassword(
 		[]byte(passwordHash),
 		[]byte(request.Password),
-	)
-	if err != nil {
+	); err != nil {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
@@ -164,12 +164,15 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 	err = h.DB.QueryRow(
 		context.Background(),
-		"SELECT id, username, email FROM users WHERE id = $1",
+		`SELECT id, username, email, role
+		 FROM users
+		 WHERE id = $1`,
 		userID,
 	).Scan(
 		&user.ID,
 		&user.Username,
 		&user.Email,
+		&user.Role,
 	)
 
 	if err != nil {
