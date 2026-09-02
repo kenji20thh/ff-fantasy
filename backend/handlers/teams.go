@@ -17,7 +17,7 @@ type TeamHandler struct {
 func (h *TeamHandler) GetTeams(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.DB.Query(
 		context.Background(),
-		"SELECT id, name, logo_url FROM teams",
+		"SELECT id, name, COALESCE(logo_url, '') FROM teams",
 	)
 	if err != nil {
 		http.Error(w, "Failed to get teams", http.StatusInternalServerError)
@@ -57,7 +57,7 @@ func (h *TeamHandler) GetPlayers(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.DB.Query(
 		context.Background(),
-		`SELECT id, team_id, nickname, picture_url
+		`SELECT id, team_id, nickname, COALESCE(picture_url, '')
 		 FROM players
 		 WHERE team_id = $1`,
 		teamID,

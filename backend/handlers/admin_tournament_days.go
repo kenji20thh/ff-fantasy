@@ -16,20 +16,20 @@ type AdminTournamentDayHandler struct {
 }
 
 type CreateTournamentDayRequest struct {
-	TournamentID int       `json:"tournament_id"`
-	Name         string    `json:"name"`
-	Teams        []int     `json:"teams"`
-	RoomCount    int       `json:"room_count"`
-	DeadlineAt   time.Time `json:"deadline_at"`
+	TournamentID int        `json:"tournament_id"`
+	Name         string     `json:"name"`
+	Teams        []int      `json:"teams"`
+	RoomCount    int        `json:"room_count"`
+	DeadlineAt   *time.Time `json:"deadline_at"`
 }
 
 type TournamentDayResponse struct {
-	ID           int       `json:"id"`
-	TournamentID int       `json:"tournament_id"`
-	Name         string    `json:"name"`
-	DeadlineAt   time.Time `json:"deadline_at"`
-	Teams        []int     `json:"teams"`
-	RoomCount    int       `json:"room_count"`
+	ID           int        `json:"id"`
+	TournamentID int        `json:"tournament_id"`
+	Name         string     `json:"name"`
+	DeadlineAt   *time.Time `json:"deadline_at"`
+	Teams        []int      `json:"teams"`
+	RoomCount    int        `json:"room_count"`
 }
 
 func (h *AdminTournamentDayHandler) ManageTournamentDays(w http.ResponseWriter, r *http.Request) {
