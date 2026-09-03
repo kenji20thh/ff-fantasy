@@ -51,6 +51,7 @@ export type LeaderboardEntry = {
   username?: string
   points?: number
   user_id?: number
+  fantasy_team_id?: number
   [key: string]: unknown
 }
 

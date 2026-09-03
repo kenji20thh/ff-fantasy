@@ -67,8 +67,12 @@ export const api = {
   playerStats: (id: number) =>
     apiFetch(`/api/players/${id}/stats`),
 
-  leaderboard: () =>
-    apiFetch('/api/leaderboard'),
+  leaderboard: (dayId?: number) =>
+    apiFetch(
+      dayId
+        ? `/api/leaderboard?day_id=${dayId}`
+        : '/api/leaderboard'
+    ),
 
   days: () =>
     apiFetch('/api/tournament-days'),
