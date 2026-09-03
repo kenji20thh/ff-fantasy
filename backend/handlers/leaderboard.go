@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -28,34 +29,89 @@ func (h *LeaderboardHandler) GetLeaderboard(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	rows, err := h.DB.Query(
-		context.Background(),
-		`SELECT
-		ft.id,
-		u.username,
-		ft.captain_player_id,
-		ftp.player_id,
-		COALESCE(prs.kills, 0),
-		COALESCE(prs.assists, 0),
-		COALESCE(prs.first_blood, false),
-		COALESCE(prs.placement, 0)
-	FROM fantasy_teams ft
-	JOIN users u
-		ON u.id = ft.user_id
-	JOIN fantasy_team_players ftp
-		ON ftp.fantasy_team_id = ft.id
-	LEFT JOIN player_room_stats prs
-		ON prs.player_id = ftp.player_id
-	LEFT JOIN rooms r
-		ON r.id = prs.room_id
-	LEFT JOIN tournament_days td
-		ON td.id = r.tournament_day_id
-	WHERE
-		prs.room_id IS NULL
-		OR td.deadline_at IS NULL
-		OR ft.created_at < td.deadline_at
-	ORDER BY ft.id`,
+	dayID := 0
+
+	if value := r.URL.Query().Get("day_id"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed <= 0 {
+			http.Error(w, "Invalid day_id", http.StatusBadRequest)
+			return
+		}
+
+		dayID = parsed
+	}
+
+	var (
+		rows interface {
+			Next() bool
+			Scan(...any) error
+			Err() error
+			Close()
+		}
+		err error
 	)
+
+	if dayID == 0 {
+		rows, err = h.DB.Query(
+			context.Background(),
+			`SELECT
+				ft.id,
+				u.username,
+				ft.captain_player_id,
+				ftp.player_id,
+				prs.kills,
+				prs.assists,
+				prs.first_blood,
+				prs.placement
+			FROM fantasy_teams ft
+			JOIN users u
+				ON u.id = ft.user_id
+			JOIN fantasy_team_players ftp
+				ON ftp.fantasy_team_id = ft.id
+			JOIN player_room_stats prs
+				ON prs.player_id = ftp.player_id
+			JOIN rooms r
+				ON r.id = prs.room_id
+			JOIN tournament_days td
+				ON td.id = r.tournament_day_id
+			WHERE
+				td.deadline_at IS NULL
+				OR ft.created_at < td.deadline_at
+			ORDER BY ft.id`,
+		)
+	} else {
+		rows, err = h.DB.Query(
+			context.Background(),
+			`SELECT
+				ft.id,
+				u.username,
+				ft.captain_player_id,
+				ftp.player_id,
+				prs.kills,
+				prs.assists,
+				prs.first_blood,
+				prs.placement
+			FROM fantasy_teams ft
+			JOIN users u
+				ON u.id = ft.user_id
+			JOIN fantasy_team_players ftp
+				ON ftp.fantasy_team_id = ft.id
+			JOIN player_room_stats prs
+				ON prs.player_id = ftp.player_id
+			JOIN rooms r
+				ON r.id = prs.room_id
+			JOIN tournament_days td
+				ON td.id = r.tournament_day_id
+			WHERE
+				r.tournament_day_id = $1
+				AND (
+					td.deadline_at IS NULL
+					OR ft.created_at < td.deadline_at
+				)
+			ORDER BY ft.id`,
+			dayID,
+		)
+	}
 
 	if err != nil {
 		http.Error(w, "Failed to get leaderboard", http.StatusInternalServerError)

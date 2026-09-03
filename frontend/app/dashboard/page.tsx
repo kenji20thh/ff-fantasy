@@ -75,7 +75,9 @@ export default function Dashboard() {
           <span className="eyebrow">Current points</span>
 
           <h2 className="mt-8 font-mono text-3xl font-bold">
-            {points ? JSON.stringify(points) : "—"}
+            {points
+              ? ((points as { total_points?: number }).total_points ?? 0)
+              : "—"}
           </h2>
         </div>
       </div>
