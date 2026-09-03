@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { asArray, errorMessage } from "@/lib/types";
 
-import type { Player, Team } from "@/lib/types";
+import type { Player, Team, TournamentDay } from "@/lib/types";
 
 type FantasyTeamResponse = {
   id: number;
@@ -17,6 +17,9 @@ type FantasyTeamResponse = {
 export default function FantasyTeamBuilder() {
   const router = useRouter();
   const { user } = useAuth();
+
+  const [days, setDays] = useState<TournamentDay[]>([]);
+  const [selectedDay, setSelectedDay] = useState<TournamentDay | null>(null);
 
   const [teams, setTeams] = useState<Team[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -37,23 +40,75 @@ export default function FantasyTeamBuilder() {
 
     async function load() {
       try {
-        const teamsResponse = await api.teams();
+        /*
+         * Load tournament days and all teams.
+         */
+        const [daysResponse, teamsResponse] = await Promise.all([
+          api.days(),
+          api.teams(),
+        ]);
+
+        const loadedDays = asArray<TournamentDay>(daysResponse);
         const loadedTeams = asArray<Team>(teamsResponse);
 
-        setTeams(loadedTeams);
+        setDays(loadedDays);
 
-        const playerResponses = await Promise.all(
-          loadedTeams.map((team) => api.players(team.id)),
-        );
+        if (loadedDays.length === 0) {
+          throw Error("No tournament days are available.");
+        }
 
-        setPlayers(
-          playerResponses.flatMap((response) => asArray<Player>(response)),
+        /*
+         * For now, use the first tournament day.
+         */
+        const currentDay = loadedDays[0];
+
+        setSelectedDay(currentDay);
+
+        /*
+         * tournament day can return:
+         *
+         * teams: [1, 5, 8, 12]
+         *
+         * OR:
+         *
+         * teams: [
+         *   { id: 1, name: "Team A" },
+         *   ...
+         * ]
+         *
+         * Handle both formats.
+         */
+        const participatingTeamIds = new Set(
+          (currentDay.teams ?? []).map((team) =>
+            typeof team === "number" ? team : team.id,
+          ),
         );
 
         /*
+         * Only show teams participating in this tournament day.
+         */
+        const dayTeams = loadedTeams.filter((team) =>
+          participatingTeamIds.has(team.id),
+        );
+
+        setTeams(dayTeams);
+
+        /*
+         * Only load players belonging to participating teams.
+         */
+        const playerResponses = await Promise.all(
+          dayTeams.map((team) => api.players(team.id)),
+        );
+
+        const loadedPlayers = playerResponses.flatMap((response) =>
+          asArray<Player>(response),
+        );
+
+        setPlayers(loadedPlayers);
+
+        /*
          * Check whether the user already has a fantasy team.
-         * If they do, use that team instead of trying to create
-         * another one.
+         * If they do, use that team instead of creating another one.
          */
         try {
           const existing = (await api.myFantasyTeam()) as {
@@ -66,13 +121,17 @@ export default function FantasyTeamBuilder() {
 
           const existingPlayers = existing.player_ids ?? [];
 
+          /*
+           * Only restore players that are available
+           * in the current tournament day.
+           */
           const selectedPlayers = existingPlayers
             .map((playerID) =>
-              playerResponses
-                .flatMap((response) => asArray<Player>(response))
-                .find((player) => player.id === playerID),
+              loadedPlayers.find((player) => player.id === playerID),
             )
-            .filter((player): player is Player => player !== undefined);
+            .filter(
+              (player): player is Player => player !== undefined,
+            );
 
           setSelected(selectedPlayers);
 
@@ -98,7 +157,11 @@ export default function FantasyTeamBuilder() {
 
   function toggle(player: Player) {
     if (selected.some((playerItem) => playerItem.id === player.id)) {
-      setSelected(selected.filter((playerItem) => playerItem.id !== player.id));
+      setSelected(
+        selected.filter(
+          (playerItem) => playerItem.id !== player.id,
+        ),
+      );
 
       if (captain === player.id) {
         setCaptain(undefined);
@@ -113,7 +176,11 @@ export default function FantasyTeamBuilder() {
       return;
     }
 
-    if (selected.some((playerItem) => playerItem.team_id === player.team_id)) {
+    if (
+      selected.some(
+        (playerItem) => playerItem.team_id === player.team_id,
+      )
+    ) {
       setMessage("Choose four players from four different teams.");
       return;
     }
@@ -126,6 +193,10 @@ export default function FantasyTeamBuilder() {
     try {
       if (!user) {
         throw Error("Sign in before creating a fantasy team.");
+      }
+
+      if (!selectedDay) {
+        throw Error("No tournament day selected.");
       }
 
       if (selected.length !== 4) {
@@ -168,7 +239,6 @@ export default function FantasyTeamBuilder() {
 
       /*
        * Team is fully saved.
-       * Go to the fantasy team page.
        */
       router.push(`/fantasy-team/${id}`);
     } catch (error) {
@@ -179,7 +249,9 @@ export default function FantasyTeamBuilder() {
   }
 
   const visiblePlayers = players.filter(
-    (player) => selectedTeam === null || player.team_id === selectedTeam,
+    (player) =>
+      selectedTeam === null ||
+      player.team_id === selectedTeam,
   );
 
   if (!user) {
@@ -203,7 +275,9 @@ export default function FantasyTeamBuilder() {
           ← Fantasy Team
         </a>
 
-        <p className="mt-12 text-muted-foreground">Loading players...</p>
+        <p className="mt-12 text-muted-foreground">
+          Loading players...
+        </p>
       </main>
     );
   }
@@ -219,6 +293,12 @@ export default function FantasyTeamBuilder() {
           <p className="eyebrow">Fantasy builder</p>
 
           <h1 className="section-title">Draft your squad.</h1>
+
+          {selectedDay && (
+            <p className="mt-2 font-mono text-sm text-muted-foreground">
+              {selectedDay.name}
+            </p>
+          )}
         </div>
 
         <span className="font-mono text-sm text-primary">
@@ -231,6 +311,27 @@ export default function FantasyTeamBuilder() {
           {message}
         </p>
       )}
+
+      <div className="mt-8">
+        <p className="mb-3 text-xs font-bold uppercase text-muted-foreground">
+          Tournament Day
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          {days.map((day) => (
+            <div
+              key={day.id}
+              className={`border px-4 py-2 text-sm font-bold ${
+                selectedDay?.id === day.id
+                  ? "border-primary bg-primary/10"
+                  : "border-border bg-card"
+              }`}
+            >
+              {day.name}
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div className="mt-8">
         <p className="mb-3 text-xs font-bold uppercase text-muted-foreground">
@@ -276,7 +377,8 @@ export default function FantasyTeamBuilder() {
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {visiblePlayers.map((player) => {
           const isSelected = selected.some(
-            (selectedPlayer) => selectedPlayer.id === player.id,
+            (selectedPlayer) =>
+              selectedPlayer.id === player.id,
           );
 
           return (
@@ -291,8 +393,9 @@ export default function FantasyTeamBuilder() {
               }`}
             >
               <span className="text-xs text-muted-foreground">
-                {teams.find((team) => team.id === player.team_id)?.name ||
-                  `Team ${player.team_id}`}
+                {teams.find(
+                  (team) => team.id === player.team_id,
+                )?.name || `Team ${player.team_id}`}
               </span>
 
               <strong className="mt-5 block font-mono uppercase">
@@ -309,12 +412,23 @@ export default function FantasyTeamBuilder() {
         })}
       </div>
 
+      {visiblePlayers.length === 0 && (
+        <p className="mt-8 text-sm text-muted-foreground">
+          No players are available for this tournament day.
+        </p>
+      )}
+
       <section className="mt-12 border-t border-border pt-8">
-        <h2 className="font-mono text-lg font-bold uppercase">Captain</h2>
+        <h2 className="font-mono text-lg font-bold uppercase">
+          Captain
+        </h2>
 
         <div className="mt-4 flex flex-wrap gap-4">
           {selected.map((player) => (
-            <label key={player.id} className="flex items-center gap-2 text-sm">
+            <label
+              key={player.id}
+              className="flex items-center gap-2 text-sm"
+            >
               <input
                 type="radio"
                 name="captain"

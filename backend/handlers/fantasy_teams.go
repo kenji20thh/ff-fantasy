@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -74,6 +75,7 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+
 	userID, exists := h.Sessions.GetUserID(cookie.Value)
 	if !exists {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -81,17 +83,22 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 	}
 
 	var request struct {
+		DayID     int   `json:"day_id"`
 		PlayerIDs []int `json:"player_ids"`
 	}
 
-	err = json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
 	if len(request.PlayerIDs) != 4 {
 		http.Error(w, "You must select exactly 4 players", http.StatusBadRequest)
+		return
+	}
+
+	if request.DayID == 0 {
+		http.Error(w, "Tournament day is required", http.StatusBadRequest)
 		return
 	}
 
@@ -106,10 +113,12 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 		seen[playerID] = true
 	}
 
+	ctx := context.Background()
+
 	var teamOwnerID int
 
 	err = h.DB.QueryRow(
-		context.Background(),
+		ctx,
 		"SELECT user_id FROM fantasy_teams WHERE id = $1",
 		fantasyTeamID,
 	).Scan(&teamOwnerID)
@@ -129,21 +138,57 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	open, err := isTransferWindowOpen(context.Background(), h.DB)
+	// Check that this specific tournament day exists and its
+	// deadline has not passed.
+	var deadline *string
+
+	err = h.DB.QueryRow(
+		ctx,
+		`SELECT deadline_at::text
+		 FROM tournament_days
+		 WHERE id = $1`,
+		request.DayID,
+	).Scan(&deadline)
+
 	if err != nil {
-		http.Error(w, "Failed to check transfer window", http.StatusInternalServerError)
-		return
-	}
-	if !open {
-		http.Error(w, "Transfer window is closed for the current matchday.", http.StatusLocked)
+		if err == pgx.ErrNoRows {
+			http.Error(w, "Tournament day not found", http.StatusNotFound)
+			return
+		}
+
+		http.Error(w, "Failed to get tournament day", http.StatusInternalServerError)
 		return
 	}
 
+	if deadline != nil {
+		var open bool
+
+		err = h.DB.QueryRow(
+			ctx,
+			`SELECT deadline_at > now()
+			 FROM tournament_days
+			 WHERE id = $1`,
+			request.DayID,
+		).Scan(&open)
+
+		if err != nil {
+			http.Error(w, "Failed to check tournament day deadline", http.StatusInternalServerError)
+			return
+		}
+
+		if !open {
+			http.Error(w, "This tournament day is locked.", http.StatusLocked)
+			return
+		}
+	}
+
+	// Make sure all players exist and belong to 4 different teams.
 	rows, err := h.DB.Query(
-		context.Background(),
+		ctx,
 		"SELECT id, team_id FROM players WHERE id = ANY($1)",
 		request.PlayerIDs,
 	)
+
 	if err != nil {
 		http.Error(w, "Failed to get players", http.StatusInternalServerError)
 		return
@@ -157,8 +202,7 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 		var playerID int
 		var teamID int
 
-		err := rows.Scan(&playerID, &teamID)
-		if err != nil {
+		if err := rows.Scan(&playerID, &teamID); err != nil {
 			http.Error(w, "Failed to read player", http.StatusInternalServerError)
 			return
 		}
@@ -168,7 +212,7 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := rows.Err(); err != nil {
-		http.Error(w, "Error reading rows", http.StatusInternalServerError)
+		http.Error(w, "Error reading players", http.StatusInternalServerError)
 		return
 	}
 
@@ -182,49 +226,79 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	tx, err := h.DB.Begin(context.Background())
+	tx, err := h.DB.Begin(ctx)
 	if err != nil {
 		http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
 		return
 	}
-	defer tx.Rollback(context.Background())
+	defer tx.Rollback(ctx)
 
-	_, err = tx.Exec(
-		context.Background(),
-		"DELETE FROM fantasy_team_players WHERE fantasy_team_id = $1",
+	// One selection per fantasy team per tournament day.
+	var selectionID int
+
+	err = tx.QueryRow(
+		ctx,
+		`INSERT INTO fantasy_team_day_selections
+			(fantasy_team_id, tournament_day_id)
+		 VALUES ($1, $2)
+		 ON CONFLICT (fantasy_team_id, tournament_day_id)
+		 DO UPDATE SET tournament_day_id = EXCLUDED.tournament_day_id
+		 RETURNING id`,
 		fantasyTeamID,
-	)
+		request.DayID,
+	).Scan(&selectionID)
 
 	if err != nil {
-		http.Error(w, "Failed to remove old players", http.StatusInternalServerError)
+		http.Error(w, "Failed to save tournament day selection", http.StatusInternalServerError)
 		return
 	}
 
+	// If the user changes their selection before the deadline,
+	// only THIS day's players are replaced.
+	// Previous tournament days remain untouched.
 	_, err = tx.Exec(
-		context.Background(),
-		"UPDATE fantasy_teams SET captain_player_id = NULL WHERE id = $1",
-		fantasyTeamID,
+		ctx,
+		`DELETE FROM fantasy_team_day_players
+		 WHERE selection_id = $1`,
+		selectionID,
 	)
+
 	if err != nil {
-		http.Error(w, "Failed to reset captain", http.StatusInternalServerError)
+		http.Error(w, "Failed to remove old day players", http.StatusInternalServerError)
 		return
 	}
 
 	for _, playerID := range request.PlayerIDs {
 		_, err = tx.Exec(
-			context.Background(),
-			"INSERT INTO fantasy_team_players (fantasy_team_id, player_id) VALUES ($1, $2)",
-			fantasyTeamID,
+			ctx,
+			`INSERT INTO fantasy_team_day_players
+				(selection_id, player_id)
+			 VALUES ($1, $2)`,
+			selectionID,
 			playerID,
 		)
+
 		if err != nil {
 			http.Error(w, "Failed to save player selection", http.StatusInternalServerError)
 			return
 		}
 	}
 
-	err = tx.Commit(context.Background())
+	// Reset the captain for this day only.
+	_, err = tx.Exec(
+		ctx,
+		`UPDATE fantasy_team_day_selections
+		 SET captain_player_id = NULL
+		 WHERE id = $1`,
+		selectionID,
+	)
+
 	if err != nil {
+		http.Error(w, "Failed to reset day captain", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		http.Error(w, "Failed to save player selection", http.StatusInternalServerError)
 		return
 	}
@@ -233,6 +307,7 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"fantasy_team_id": fantasyTeamID,
+		"day_id":          request.DayID,
 		"player_ids":      request.PlayerIDs,
 	})
 }
@@ -256,18 +331,19 @@ func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Reque
 	}
 
 	fantasyTeamID := r.PathValue("id")
+	ctx := context.Background()
 
 	var fantasyTeam models.FantasyTeam
-	var captainPlayerID *int
 
 	err = h.DB.QueryRow(
-		context.Background(),
-		"SELECT id, user_id, captain_player_id FROM fantasy_teams WHERE id = $1",
+		ctx,
+		`SELECT id, user_id
+		 FROM fantasy_teams
+		 WHERE id = $1`,
 		fantasyTeamID,
 	).Scan(
 		&fantasyTeam.ID,
 		&fantasyTeam.UserID,
-		&captainPlayerID,
 	)
 
 	if err != nil {
@@ -285,34 +361,111 @@ func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var playerIDs []int
-
+	// Return all day selections so the frontend can display history.
 	rows, err := h.DB.Query(
-		context.Background(),
-		"SELECT player_id FROM fantasy_team_players WHERE fantasy_team_id = $1",
+		ctx,
+		`SELECT
+			s.id,
+			s.tournament_day_id,
+			s.captain_player_id,
+			td.name
+		 FROM fantasy_team_day_selections s
+		 JOIN tournament_days td
+			ON td.id = s.tournament_day_id
+		 WHERE s.fantasy_team_id = $1
+		 ORDER BY s.tournament_day_id`,
 		fantasyTeamID,
 	)
+
 	if err != nil {
-		http.Error(w, "Failed to get selected players", http.StatusInternalServerError)
+		http.Error(w, "Failed to get day selections", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	for rows.Next() {
-		var playerID int
+	type DaySelection struct {
+		ID              int    `json:"id"`
+		DayID           int    `json:"day_id"`
+		DayName         string `json:"day_name"`
+		PlayerIDs       []int  `json:"player_ids"`
+		CaptainPlayerID *int   `json:"captain_player_id"`
+	}
 
-		err := rows.Scan(&playerID)
-		if err != nil {
-			http.Error(w, "Failed to read player", http.StatusInternalServerError)
+	var selections []DaySelection
+
+	for rows.Next() {
+		var (
+			selectionID     int
+			dayID           int
+			captainPlayerID *int
+			dayName         string
+		)
+
+		if err := rows.Scan(
+			&selectionID,
+			&dayID,
+			&captainPlayerID,
+			&dayName,
+		); err != nil {
+			http.Error(w, "Failed to read day selection", http.StatusInternalServerError)
 			return
 		}
 
-		playerIDs = append(playerIDs, playerID)
+		playerRows, err := h.DB.Query(
+			ctx,
+			`SELECT player_id
+			 FROM fantasy_team_day_players
+			 WHERE selection_id = $1
+			 ORDER BY player_id`,
+			selectionID,
+		)
+
+		if err != nil {
+			http.Error(w, "Failed to get day players", http.StatusInternalServerError)
+			return
+		}
+
+		var playerIDs []int
+
+		for playerRows.Next() {
+			var playerID int
+
+			if err := playerRows.Scan(&playerID); err != nil {
+				playerRows.Close()
+				http.Error(w, "Failed to read day player", http.StatusInternalServerError)
+				return
+			}
+
+			playerIDs = append(playerIDs, playerID)
+		}
+
+		playerRows.Close()
+
+		selections = append(selections, DaySelection{
+			ID:              selectionID,
+			DayID:           dayID,
+			DayName:         dayName,
+			PlayerIDs:       playerIDs,
+			CaptainPlayerID: captainPlayerID,
+		})
 	}
 
 	if err := rows.Err(); err != nil {
-		http.Error(w, "Error reading players", http.StatusInternalServerError)
+		http.Error(w, "Error reading day selections", http.StatusInternalServerError)
 		return
+	}
+
+	// Return the latest selection as player_ids/captain_player_id
+	// for compatibility with the existing frontend.
+	var currentPlayerIDs []int
+	var currentCaptain *int
+	var currentDayID *int
+
+	if len(selections) > 0 {
+		last := selections[len(selections)-1]
+		currentPlayerIDs = last.PlayerIDs
+		currentCaptain = last.CaptainPlayerID
+		currentDayID = &last.DayID
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -320,8 +473,10 @@ func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"id":                fantasyTeam.ID,
 		"user_id":           fantasyTeam.UserID,
-		"player_ids":        playerIDs,
-		"captain_player_id": captainPlayerID,
+		"day_id":            currentDayID,
+		"player_ids":        currentPlayerIDs,
+		"captain_player_id": currentCaptain,
+		"days":              selections,
 	})
 }
 
@@ -346,19 +501,26 @@ func (h *FantasyTeamHandler) SetCaptain(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var request struct {
+		DayID    int `json:"day_id"`
 		PlayerID int `json:"player_id"`
 	}
 
-	err = json.NewDecoder(r.Body).Decode(&request)
-	if err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
+	if request.DayID == 0 {
+		http.Error(w, "Tournament day is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx := context.Background()
+
 	var teamOwnerID int
 
 	err = h.DB.QueryRow(
-		context.Background(),
+		ctx,
 		"SELECT user_id FROM fantasy_teams WHERE id = $1",
 		fantasyTeamID,
 	).Scan(&teamOwnerID)
@@ -378,27 +540,65 @@ func (h *FantasyTeamHandler) SetCaptain(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	open, err := isTransferWindowOpen(context.Background(), h.DB)
+	var open bool
+
+	err = h.DB.QueryRow(
+		ctx,
+		`SELECT
+			deadline_at IS NULL OR deadline_at > now()
+		 FROM tournament_days
+		 WHERE id = $1`,
+		request.DayID,
+	).Scan(&open)
+
 	if err != nil {
-		http.Error(w, "Failed to check transfer window", http.StatusInternalServerError)
+		if err == pgx.ErrNoRows {
+			http.Error(w, "Tournament day not found", http.StatusNotFound)
+			return
+		}
+
+		http.Error(w, "Failed to check tournament day", http.StatusInternalServerError)
 		return
 	}
+
 	if !open {
-		http.Error(w, "Transfer window is closed for the current matchday.", http.StatusLocked)
+		http.Error(w, "This tournament day is locked.", http.StatusLocked)
+		return
+	}
+
+	var selectionID int
+
+	err = h.DB.QueryRow(
+		ctx,
+		`SELECT id
+		 FROM fantasy_team_day_selections
+		 WHERE fantasy_team_id = $1
+		 AND tournament_day_id = $2`,
+		fantasyTeamID,
+		request.DayID,
+	).Scan(&selectionID)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			http.Error(w, "You have not selected players for this tournament day", http.StatusBadRequest)
+			return
+		}
+
+		http.Error(w, "Failed to find day selection", http.StatusInternalServerError)
 		return
 	}
 
 	var playerExists bool
 
 	err = h.DB.QueryRow(
-		context.Background(),
+		ctx,
 		`SELECT EXISTS(
 			SELECT 1
-			FROM fantasy_team_players
-			WHERE fantasy_team_id = $1
+			FROM fantasy_team_day_players
+			WHERE selection_id = $1
 			AND player_id = $2
 		)`,
-		fantasyTeamID,
+		selectionID,
 		request.PlayerID,
 	).Scan(&playerExists)
 
@@ -408,15 +608,17 @@ func (h *FantasyTeamHandler) SetCaptain(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if !playerExists {
-		http.Error(w, "Player is not in your fantasy team", http.StatusBadRequest)
+		http.Error(w, "Player is not in this day's fantasy team", http.StatusBadRequest)
 		return
 	}
 
 	_, err = h.DB.Exec(
-		context.Background(),
-		"UPDATE fantasy_teams SET captain_player_id = $1 WHERE id = $2",
+		ctx,
+		`UPDATE fantasy_team_day_selections
+		 SET captain_player_id = $1
+		 WHERE id = $2`,
 		request.PlayerID,
-		fantasyTeamID,
+		selectionID,
 	)
 
 	if err != nil {
@@ -428,6 +630,7 @@ func (h *FantasyTeamHandler) SetCaptain(w http.ResponseWriter, r *http.Request) 
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"fantasy_team_id":   fantasyTeamID,
+		"day_id":            request.DayID,
 		"captain_player_id": request.PlayerID,
 	})
 }
@@ -452,16 +655,17 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 		return
 	}
 
+	ctx := context.Background()
+
 	var teamOwnerID int
-	var captainPlayerID *int
 
 	err = h.DB.QueryRow(
-		context.Background(),
-		`SELECT user_id, captain_player_id
+		ctx,
+		`SELECT user_id
 		 FROM fantasy_teams
 		 WHERE id = $1`,
 		fantasyTeamID,
-	).Scan(&teamOwnerID, &captainPlayerID)
+	).Scan(&teamOwnerID)
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -494,179 +698,259 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 		TotalPoints int         `json:"total_points"`
 	}
 
-	players := make(map[int]*PlayerScore)
+	type DayScore struct {
+		DayID       int           `json:"day_id"`
+		DayName     string        `json:"day_name"`
+		CaptainID   *int          `json:"captain_player_id"`
+		TotalPoints int           `json:"total_points"`
+		Players     []PlayerScore `json:"players"`
+	}
 
-	// First, always create an entry for every player in the fantasy team.
+	// Get every saved day selection.
 	rows, err := h.DB.Query(
-		context.Background(),
-		`SELECT player_id
-		 FROM fantasy_team_players
-		 WHERE fantasy_team_id = $1
-		 ORDER BY player_id`,
-		fantasyTeamID,
-	)
-
-	if err != nil {
-		http.Error(w, "Failed to get fantasy team players", http.StatusInternalServerError)
-		return
-	}
-
-	for rows.Next() {
-		var playerID int
-
-		if err := rows.Scan(&playerID); err != nil {
-			rows.Close()
-			http.Error(w, "Failed to read fantasy team player", http.StatusInternalServerError)
-			return
-		}
-
-		players[playerID] = &PlayerScore{
-			PlayerID: playerID,
-			Captain:  captainPlayerID != nil && playerID == *captainPlayerID,
-			Rooms:    []RoomScore{},
-		}
-	}
-
-	rows.Close()
-
-	if err := rows.Err(); err != nil {
-		http.Error(w, "Error reading fantasy team players", http.StatusInternalServerError)
-		return
-	}
-
-	// Now get only stats from tournament days for which the fantasy
-	// team existed before the deadline.
-	rows, err = h.DB.Query(
-		context.Background(),
+		ctx,
 		`SELECT
-			ftp.player_id,
-			prs.room_id,
-			COALESCE(prs.kills, 0),
-			COALESCE(prs.assists, 0),
-			COALESCE(prs.first_blood, false),
-			COALESCE(prs.placement, 0)
-		FROM fantasy_team_players ftp
-		JOIN fantasy_teams ft
-			ON ft.id = ftp.fantasy_team_id
-		JOIN player_room_stats prs
-			ON prs.player_id = ftp.player_id
-		JOIN rooms r
-			ON r.id = prs.room_id
-		JOIN tournament_days td
-			ON td.id = r.tournament_day_id
-		WHERE ftp.fantasy_team_id = $1
-			AND (
-				td.deadline_at IS NULL
-				OR ft.created_at < td.deadline_at
-			)
-		ORDER BY ftp.player_id, prs.room_id`,
+			s.id,
+			s.tournament_day_id,
+			td.name,
+			s.captain_player_id
+		 FROM fantasy_team_day_selections s
+		 JOIN tournament_days td
+			ON td.id = s.tournament_day_id
+		 WHERE s.fantasy_team_id = $1
+		 ORDER BY s.tournament_day_id`,
 		fantasyTeamID,
 	)
 
 	if err != nil {
-		http.Error(w, "Failed to get player statistics", http.StatusInternalServerError)
+		http.Error(w, "Failed to get fantasy team selections", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
+	type Selection struct {
+		ID        int
+		DayID     int
+		DayName   string
+		CaptainID *int
+	}
+
+	var selections []Selection
+
 	for rows.Next() {
-		var (
-			playerID   int
-			roomID     int
-			kills      int
-			assists    int
-			firstBlood bool
-			placement  int
-		)
+		var selection Selection
 
-		err := rows.Scan(
-			&playerID,
-			&roomID,
-			&kills,
-			&assists,
-			&firstBlood,
-			&placement,
-		)
-
-		if err != nil {
-			http.Error(w, "Failed to read player statistics", http.StatusInternalServerError)
+		if err := rows.Scan(
+			&selection.ID,
+			&selection.DayID,
+			&selection.DayName,
+			&selection.CaptainID,
+		); err != nil {
+			http.Error(w, "Failed to read fantasy team selection", http.StatusInternalServerError)
 			return
 		}
 
-		points := scoring.PlayerRoomPoints(
-			kills,
-			assists,
-			firstBlood,
-			placement,
+		selections = append(selections, selection)
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Error reading selections", http.StatusInternalServerError)
+		return
+	}
+
+	// Used to provide the old top-level "players" response too.
+	aggregate := make(map[int]*PlayerScore)
+
+	var dayScores []DayScore
+	totalPoints := 0
+
+	for _, selection := range selections {
+		playerRows, err := h.DB.Query(
+			ctx,
+			`SELECT player_id
+			 FROM fantasy_team_day_players
+			 WHERE selection_id = $1
+			 ORDER BY player_id`,
+			selection.ID,
 		)
 
-		players[playerID].Rooms = append(
-			players[playerID].Rooms,
-			RoomScore{
+		if err != nil {
+			http.Error(w, "Failed to get day players", http.StatusInternalServerError)
+			return
+		}
+
+		var playerIDs []int
+
+		for playerRows.Next() {
+			var playerID int
+
+			if err := playerRows.Scan(&playerID); err != nil {
+				playerRows.Close()
+				http.Error(w, "Failed to read day player", http.StatusInternalServerError)
+				return
+			}
+
+			playerIDs = append(playerIDs, playerID)
+		}
+
+		playerRows.Close()
+
+		dayPlayers := make(map[int]*PlayerScore)
+
+		for _, playerID := range playerIDs {
+			dayPlayers[playerID] = &PlayerScore{
+				PlayerID: playerID,
+				Captain:  selection.CaptainID != nil && playerID == *selection.CaptainID,
+				Rooms:    []RoomScore{},
+			}
+
+			if _, exists := aggregate[playerID]; !exists {
+				aggregate[playerID] = &PlayerScore{
+					PlayerID: playerID,
+					Rooms:    []RoomScore{},
+				}
+			}
+		}
+
+		// Get statistics ONLY from this tournament day.
+		statRows, err := h.DB.Query(
+			ctx,
+			`SELECT
+				prs.player_id,
+				prs.room_id,
+				COALESCE(prs.kills, 0),
+				COALESCE(prs.assists, 0),
+				COALESCE(prs.first_blood, false),
+				COALESCE(prs.placement, 0)
+			FROM player_room_stats prs
+			JOIN rooms r
+				ON r.id = prs.room_id
+			WHERE r.tournament_day_id = $1
+				AND prs.player_id = ANY($2)
+			ORDER BY prs.player_id, prs.room_id`,
+			selection.DayID,
+			playerIDs,
+		)
+
+		if err != nil {
+			http.Error(w, "Failed to get player statistics", http.StatusInternalServerError)
+			return
+		}
+
+		for statRows.Next() {
+			var (
+				playerID   int
+				roomID     int
+				kills      int
+				assists    int
+				firstBlood bool
+				placement  int
+			)
+
+			if err := statRows.Scan(
+				&playerID,
+				&roomID,
+				&kills,
+				&assists,
+				&firstBlood,
+				&placement,
+			); err != nil {
+				statRows.Close()
+				http.Error(w, "Failed to read player statistics", http.StatusInternalServerError)
+				return
+			}
+
+			points := scoring.PlayerRoomPoints(
+				kills,
+				assists,
+				firstBlood,
+				placement,
+			)
+
+			roomScore := RoomScore{
 				RoomID:     roomID,
 				Kills:      kills,
 				Assists:    assists,
 				FirstBlood: firstBlood,
 				Placement:  placement,
 				Points:     points,
-			},
-		)
+			}
 
-		players[playerID].TotalPoints += points
-	}
+			if player := dayPlayers[playerID]; player != nil {
+				player.Rooms = append(player.Rooms, roomScore)
+				player.TotalPoints += points
+			}
 
-	if err := rows.Err(); err != nil {
-		http.Error(w, "Error reading player statistics", http.StatusInternalServerError)
-		return
-	}
+			aggregate[playerID].Rooms = append(
+				aggregate[playerID].Rooms,
+				roomScore,
+			)
 
-	playerScores := make([]PlayerScore, 0, len(players))
-	totalPoints := 0
-
-	for _, player := range players {
-		if player.Captain {
-			player.TotalPoints *= 2
+			aggregate[playerID].TotalPoints += points
 		}
 
-		totalPoints += player.TotalPoints
-		playerScores = append(playerScores, *player)
+		statRows.Close()
+
+		var dayTotal int
+
+		dayPlayerScores := make([]PlayerScore, 0, len(dayPlayers))
+
+		for _, player := range dayPlayers {
+			dayTotal += player.TotalPoints
+
+			if player.Captain {
+				player.TotalPoints *= 2
+			}
+
+			dayPlayerScores = append(dayPlayerScores, *player)
+		}
+
+		// dayTotal needs to include the captain multiplier.
+		dayTotal = 0
+
+		for _, player := range dayPlayers {
+			points := player.TotalPoints
+
+			if player.Captain {
+				points *= 2
+			}
+
+			dayTotal += points
+		}
+
+		sort.Slice(dayPlayerScores, func(i, j int) bool {
+			return dayPlayerScores[i].PlayerID < dayPlayerScores[j].PlayerID
+		})
+
+		dayScores = append(dayScores, DayScore{
+			DayID:       selection.DayID,
+			DayName:     selection.DayName,
+			CaptainID:   selection.CaptainID,
+			TotalPoints: dayTotal,
+			Players:     dayPlayerScores,
+		})
+
+		totalPoints += dayTotal
 	}
+
+	aggregateScores := make([]PlayerScore, 0, len(aggregate))
+
+	for _, player := range aggregate {
+		aggregateScores = append(aggregateScores, *player)
+	}
+
+	sort.Slice(aggregateScores, func(i, j int) bool {
+		return aggregateScores[i].PlayerID < aggregateScores[j].PlayerID
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"fantasy_team_id": fantasyTeamID,
 		"total_points":    totalPoints,
-		"players":         playerScores,
+		"players":         aggregateScores,
+		"days":            dayScores,
 	})
-}
-
-func isTransferWindowOpen(ctx context.Context, db *pgxpool.Pool) (bool, error) {
-	var totalWithDeadline int
-
-	err := db.QueryRow(
-		ctx,
-		"SELECT COUNT(*) FROM tournament_days WHERE deadline_at IS NOT NULL",
-	).Scan(&totalWithDeadline)
-	if err != nil {
-		return false, err
-	}
-
-	if totalWithDeadline == 0 {
-		return true, nil
-	}
-
-	var openCount int
-
-	err = db.QueryRow(
-		ctx,
-		"SELECT COUNT(*) FROM tournament_days WHERE deadline_at > now()",
-	).Scan(&openCount)
-	if err != nil {
-		return false, err
-	}
-
-	return openCount > 0, nil
 }
 
 func (h *FantasyTeamHandler) GetMyFantasyTeam(w http.ResponseWriter, r *http.Request) {
@@ -687,19 +971,19 @@ func (h *FantasyTeamHandler) GetMyFantasyTeam(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	ctx := context.Background()
+
 	var fantasyTeam models.FantasyTeam
-	var captainPlayerID *int
 
 	err = h.DB.QueryRow(
-		context.Background(),
-		`SELECT id, user_id, captain_player_id
+		ctx,
+		`SELECT id, user_id
 		 FROM fantasy_teams
 		 WHERE user_id = $1`,
 		userID,
 	).Scan(
 		&fantasyTeam.ID,
 		&fantasyTeam.UserID,
-		&captainPlayerID,
 	)
 
 	if err != nil {
@@ -712,37 +996,97 @@ func (h *FantasyTeamHandler) GetMyFantasyTeam(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	var playerIDs []int
+	type DaySelection struct {
+		ID              int    `json:"id"`
+		DayID           int    `json:"day_id"`
+		DayName         string `json:"day_name"`
+		PlayerIDs       []int  `json:"player_ids"`
+		CaptainPlayerID *int   `json:"captain_player_id"`
+	}
 
 	rows, err := h.DB.Query(
-		context.Background(),
-		`SELECT player_id
-		 FROM fantasy_team_players
-		 WHERE fantasy_team_id = $1
-		 ORDER BY player_id`,
+		ctx,
+		`SELECT
+			s.id,
+			s.tournament_day_id,
+			td.name,
+			s.captain_player_id
+		 FROM fantasy_team_day_selections s
+		 JOIN tournament_days td
+			ON td.id = s.tournament_day_id
+		 WHERE s.fantasy_team_id = $1
+		 ORDER BY s.tournament_day_id`,
 		fantasyTeam.ID,
 	)
 
 	if err != nil {
-		http.Error(w, "Failed to get selected players", http.StatusInternalServerError)
+		http.Error(w, "Failed to get fantasy team selections", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	for rows.Next() {
-		var playerID int
+	var selections []DaySelection
 
-		if err := rows.Scan(&playerID); err != nil {
-			http.Error(w, "Failed to read player", http.StatusInternalServerError)
+	for rows.Next() {
+		var selection DaySelection
+
+		if err := rows.Scan(
+			&selection.ID,
+			&selection.DayID,
+			&selection.DayName,
+			&selection.CaptainPlayerID,
+		); err != nil {
+			http.Error(w, "Failed to read fantasy team selection", http.StatusInternalServerError)
 			return
 		}
 
-		playerIDs = append(playerIDs, playerID)
+		playerRows, err := h.DB.Query(
+			ctx,
+			`SELECT player_id
+			 FROM fantasy_team_day_players
+			 WHERE selection_id = $1
+			 ORDER BY player_id`,
+			selection.ID,
+		)
+
+		if err != nil {
+			http.Error(w, "Failed to get day players", http.StatusInternalServerError)
+			return
+		}
+
+		for playerRows.Next() {
+			var playerID int
+
+			if err := playerRows.Scan(&playerID); err != nil {
+				playerRows.Close()
+				http.Error(w, "Failed to read day player", http.StatusInternalServerError)
+				return
+			}
+
+			selection.PlayerIDs = append(selection.PlayerIDs, playerID)
+		}
+
+		playerRows.Close()
+
+		selections = append(selections, selection)
 	}
 
 	if err := rows.Err(); err != nil {
-		http.Error(w, "Error reading players", http.StatusInternalServerError)
+		http.Error(w, "Error reading selections", http.StatusInternalServerError)
 		return
+	}
+
+	// Compatibility fields: latest saved day.
+	var currentPlayerIDs []int
+	var currentCaptain *int
+	var currentDayID *int
+
+	if len(selections) > 0 {
+		last := selections[len(selections)-1]
+
+		currentPlayerIDs = last.PlayerIDs
+		currentCaptain = last.CaptainPlayerID
+		currentDayID = &last.DayID
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -750,7 +1094,9 @@ func (h *FantasyTeamHandler) GetMyFantasyTeam(w http.ResponseWriter, r *http.Req
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"id":                fantasyTeam.ID,
 		"user_id":           fantasyTeam.UserID,
-		"player_ids":        playerIDs,
-		"captain_player_id": captainPlayerID,
+		"day_id":            currentDayID,
+		"player_ids":        currentPlayerIDs,
+		"captain_player_id": currentCaptain,
+		"days":              selections,
 	})
 }
