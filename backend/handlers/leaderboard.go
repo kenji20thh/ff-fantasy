@@ -31,22 +31,30 @@ func (h *LeaderboardHandler) GetLeaderboard(w http.ResponseWriter, r *http.Reque
 	rows, err := h.DB.Query(
 		context.Background(),
 		`SELECT
-			ft.id,
-			u.username,
-			ft.captain_player_id,
-			ftp.player_id,
-			COALESCE(prs.kills, 0),
-			COALESCE(prs.assists, 0),
-			COALESCE(prs.first_blood, false),
-			COALESCE(prs.placement, 0)
-		FROM fantasy_teams ft
-		JOIN users u
-			ON u.id = ft.user_id
-		JOIN fantasy_team_players ftp
-			ON ftp.fantasy_team_id = ft.id
-		LEFT JOIN player_room_stats prs
-			ON prs.player_id = ftp.player_id
-		ORDER BY ft.id`,
+		ft.id,
+		u.username,
+		ft.captain_player_id,
+		ftp.player_id,
+		COALESCE(prs.kills, 0),
+		COALESCE(prs.assists, 0),
+		COALESCE(prs.first_blood, false),
+		COALESCE(prs.placement, 0)
+	FROM fantasy_teams ft
+	JOIN users u
+		ON u.id = ft.user_id
+	JOIN fantasy_team_players ftp
+		ON ftp.fantasy_team_id = ft.id
+	LEFT JOIN player_room_stats prs
+		ON prs.player_id = ftp.player_id
+	LEFT JOIN rooms r
+		ON r.id = prs.room_id
+	LEFT JOIN tournament_days td
+		ON td.id = r.tournament_day_id
+	WHERE
+		prs.room_id IS NULL
+		OR td.deadline_at IS NULL
+		OR ft.created_at < td.deadline_at
+	ORDER BY ft.id`,
 	)
 
 	if err != nil {
