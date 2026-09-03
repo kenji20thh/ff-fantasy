@@ -41,6 +41,15 @@ func (h *LeaderboardHandler) GetLeaderboard(w http.ResponseWriter, r *http.Reque
 		dayID = parsed
 	}
 
+	type teamScore struct {
+		ID          int
+		Username    string
+		CaptainID   *int
+		TotalPoints int
+	}
+
+	teams := make(map[int]*teamScore)
+
 	var (
 		rows interface {
 			Next() bool
@@ -58,7 +67,7 @@ func (h *LeaderboardHandler) GetLeaderboard(w http.ResponseWriter, r *http.Reque
 				ft.id,
 				u.username,
 				ft.captain_player_id,
-				ftp.player_id,
+				prs.player_id,
 				prs.kills,
 				prs.assists,
 				prs.first_blood,
@@ -66,17 +75,21 @@ func (h *LeaderboardHandler) GetLeaderboard(w http.ResponseWriter, r *http.Reque
 			FROM fantasy_teams ft
 			JOIN users u
 				ON u.id = ft.user_id
-			JOIN fantasy_team_players ftp
+			LEFT JOIN fantasy_team_players ftp
 				ON ftp.fantasy_team_id = ft.id
-			JOIN player_room_stats prs
+			LEFT JOIN player_room_stats prs
 				ON prs.player_id = ftp.player_id
-			JOIN rooms r
-				ON r.id = prs.room_id
-			JOIN tournament_days td
-				ON td.id = r.tournament_day_id
-			WHERE
-				td.deadline_at IS NULL
-				OR ft.created_at < td.deadline_at
+				AND EXISTS (
+					SELECT 1
+					FROM rooms r
+					JOIN tournament_days td
+						ON td.id = r.tournament_day_id
+					WHERE r.id = prs.room_id
+						AND (
+							td.deadline_at IS NULL
+							OR ft.created_at < td.deadline_at
+						)
+				)
 			ORDER BY ft.id`,
 		)
 	} else {
@@ -86,7 +99,7 @@ func (h *LeaderboardHandler) GetLeaderboard(w http.ResponseWriter, r *http.Reque
 				ft.id,
 				u.username,
 				ft.captain_player_id,
-				ftp.player_id,
+				prs.player_id,
 				prs.kills,
 				prs.assists,
 				prs.first_blood,
@@ -94,19 +107,21 @@ func (h *LeaderboardHandler) GetLeaderboard(w http.ResponseWriter, r *http.Reque
 			FROM fantasy_teams ft
 			JOIN users u
 				ON u.id = ft.user_id
-			JOIN fantasy_team_players ftp
+			LEFT JOIN fantasy_team_players ftp
 				ON ftp.fantasy_team_id = ft.id
-			JOIN player_room_stats prs
+			LEFT JOIN player_room_stats prs
 				ON prs.player_id = ftp.player_id
-			JOIN rooms r
-				ON r.id = prs.room_id
-			JOIN tournament_days td
-				ON td.id = r.tournament_day_id
-			WHERE
-				r.tournament_day_id = $1
-				AND (
-					td.deadline_at IS NULL
-					OR ft.created_at < td.deadline_at
+				AND EXISTS (
+					SELECT 1
+					FROM rooms r
+					JOIN tournament_days td
+						ON td.id = r.tournament_day_id
+					WHERE r.id = prs.room_id
+						AND r.tournament_day_id = $1
+						AND (
+							td.deadline_at IS NULL
+							OR ft.created_at < td.deadline_at
+						)
 				)
 			ORDER BY ft.id`,
 			dayID,
@@ -119,25 +134,16 @@ func (h *LeaderboardHandler) GetLeaderboard(w http.ResponseWriter, r *http.Reque
 	}
 	defer rows.Close()
 
-	type teamScore struct {
-		ID          int
-		Username    string
-		CaptainID   *int
-		TotalPoints int
-	}
-
-	teams := make(map[int]*teamScore)
-
 	for rows.Next() {
 		var (
 			fantasyTeamID int
 			username      string
 			captainID     *int
-			playerID      int
-			kills         int
-			assists       int
-			firstBlood    bool
-			placement     int
+			playerID      *int
+			kills         *int
+			assists       *int
+			firstBlood    *bool
+			placement     *int
 		)
 
 		err := rows.Scan(
@@ -165,14 +171,40 @@ func (h *LeaderboardHandler) GetLeaderboard(w http.ResponseWriter, r *http.Reque
 			}
 		}
 
+		// No stats for this player yet.
+		if playerID == nil {
+			continue
+		}
+
+		playerKills := 0
+		playerAssists := 0
+		playerFirstBlood := false
+		playerPlacement := 0
+
+		if kills != nil {
+			playerKills = *kills
+		}
+
+		if assists != nil {
+			playerAssists = *assists
+		}
+
+		if firstBlood != nil {
+			playerFirstBlood = *firstBlood
+		}
+
+		if placement != nil {
+			playerPlacement = *placement
+		}
+
 		points := scoring.PlayerRoomPoints(
-			kills,
-			assists,
-			firstBlood,
-			placement,
+			playerKills,
+			playerAssists,
+			playerFirstBlood,
+			playerPlacement,
 		)
 
-		if captainID != nil && playerID == *captainID {
+		if captainID != nil && *playerID == *captainID {
 			points *= 2
 		}
 
@@ -195,7 +227,11 @@ func (h *LeaderboardHandler) GetLeaderboard(w http.ResponseWriter, r *http.Reque
 	}
 
 	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Points > entries[j].Points
+		if entries[i].Points != entries[j].Points {
+			return entries[i].Points > entries[j].Points
+		}
+
+		return entries[i].FantasyTeamID < entries[j].FantasyTeamID
 	})
 
 	for i := range entries {
