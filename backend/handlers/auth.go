@@ -78,6 +78,15 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Automatically log the newly registered user in.
+	sessionID, err := h.Sessions.Create(user.ID)
+	if err != nil {
+		http.Error(w, "Failed to create session", http.StatusInternalServerError)
+		return
+	}
+
+	h.Sessions.SetCookie(w, sessionID)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 
@@ -91,8 +100,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Identifier string `json:"identifier"`
+		Password   string `json:"password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -100,8 +109,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if request.Email == "" || request.Password == "" {
-		http.Error(w, "Email and password are required", http.StatusBadRequest)
+	if request.Identifier == "" || request.Password == "" {
+		http.Error(w, "Username or email and password are required", http.StatusBadRequest)
 		return
 	}
 
@@ -112,8 +121,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		context.Background(),
 		`SELECT id, username, email, password_hash, role
 		 FROM users
-		 WHERE email = $1`,
-		request.Email,
+		 WHERE email = $1 OR username = $1`,
+		request.Identifier,
 	).Scan(
 		&user.ID,
 		&user.Username,
@@ -123,7 +132,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		http.Error(w, "Invalid username/email or password", http.StatusUnauthorized)
 		return
 	}
 
@@ -131,7 +140,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		[]byte(passwordHash),
 		[]byte(request.Password),
 	); err != nil {
-		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		http.Error(w, "Invalid username/email or password", http.StatusUnauthorized)
 		return
 	}
 
