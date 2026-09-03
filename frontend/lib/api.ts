@@ -15,15 +15,38 @@ export async function apiFetch<T>(
     },
   })
 
-  const data = await response.json().catch(() => null)
+  const contentType = response.headers.get('content-type') ?? ''
+
+  let data: unknown = null
+
+  if (contentType.includes('application/json')) {
+    data = await response.json().catch(() => null)
+  } else {
+    data = await response.text().catch(() => null)
+  }
 
   if (!response.ok) {
-    const error = new Error(
-      data?.error ||
-        data?.message ||
-        `Request failed (${response.status})`
-    ) as ApiError
+    let message = `Request failed (${response.status})`
 
+    if (typeof data === 'string' && data.trim()) {
+      message = data.trim()
+    } else if (
+      data &&
+      typeof data === 'object' &&
+      'error' in data &&
+      typeof data.error === 'string'
+    ) {
+      message = data.error
+    } else if (
+      data &&
+      typeof data === 'object' &&
+      'message' in data &&
+      typeof data.message === 'string'
+    ) {
+      message = data.message
+    }
+
+    const error = new Error(message) as ApiError
     error.status = response.status
     throw error
   }

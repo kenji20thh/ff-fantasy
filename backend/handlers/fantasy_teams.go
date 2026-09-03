@@ -755,6 +755,7 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 
 	if err := rows.Err(); err != nil {
 		http.Error(w, "Error reading selections", http.StatusInternalServerError)
+		http.Error(w, "Error reading selections: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -1073,6 +1074,7 @@ func (h *FantasyTeamHandler) GetMyFantasyTeam(w http.ResponseWriter, r *http.Req
 
 	if err := rows.Err(); err != nil {
 		http.Error(w, "Error reading selections", http.StatusInternalServerError)
+		http.Error(w, "Error reading selections: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
