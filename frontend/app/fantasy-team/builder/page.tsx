@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -38,8 +39,16 @@ export default function FantasyTeamBuilder() {
   const [selectedDay, setSelectedDay] =
     useState<TournamentDay | null>(null);
 
+  /*
+   * allTeams = every team in the tournament.
+   *
+   * teams = only teams participating in the currently
+   * selected tournament day.
+   */
+  const [allTeams, setAllTeams] = useState<Team[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
+
   const [selected, setSelected] = useState<Player[]>([]);
   const [captain, setCaptain] = useState<number>();
 
@@ -56,11 +65,6 @@ export default function FantasyTeamBuilder() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  /*
-   * A day is locked when its deadline has passed.
-   *
-   * NULL deadline = no deadline = editable.
-   */
   function isDayLocked(day: TournamentDay) {
     if (!day.deadline_at) {
       return false;
@@ -70,39 +74,35 @@ export default function FantasyTeamBuilder() {
   }
 
   /*
-   * Load the players and saved fantasy selection
-   * for one specific tournament day.
+   * Load everything belonging to one tournament day.
+   *
+   * IMPORTANT:
+   * We use allTeams here instead of the current `teams`
+   * state. Otherwise switching Day 1 -> Day 2 could filter
+   * Day 2 using only Day 1's teams.
    */
   async function loadDay(
     day: TournamentDay,
     fantasyTeam?: FantasyTeamResponse,
+    availableTeams: Team[] = allTeams,
   ) {
     try {
       setLoadingDay(true);
       setMessage("");
       setSelectedTeam(null);
 
-      /*
-       * The day may contain either team IDs or full Team objects.
-       */
       const participatingTeamIds = new Set(
         (day.teams ?? []).map((team) =>
           typeof team === "number" ? team : team.id,
         ),
       );
 
-      /*
-       * Only show teams participating in this day.
-       */
-      const dayTeams = teams.filter((team) =>
+      const dayTeams = availableTeams.filter((team) =>
         participatingTeamIds.has(team.id),
       );
 
       setTeams(dayTeams);
 
-      /*
-       * Load players for this day's teams.
-       */
       const playerResponses = await Promise.all(
         dayTeams.map((team) => api.players(team.id)),
       );
@@ -113,9 +113,6 @@ export default function FantasyTeamBuilder() {
 
       setPlayers(loadedPlayers);
 
-      /*
-       * Find the saved selection for this day.
-       */
       const savedSelection =
         fantasyTeam?.days?.find(
           (selection) => selection.day_id === day.id,
@@ -178,11 +175,14 @@ export default function FantasyTeamBuilder() {
           );
         }
 
+        /*
+         * Store the complete team list.
+         */
         setDays(loadedDays);
-        setTeams(loadedTeams);
+        setAllTeams(loadedTeams);
 
         /*
-         * Get the user's existing fantasy team.
+         * Get existing fantasy team.
          */
         let fantasyTeam: FantasyTeamResponse | undefined;
 
@@ -206,10 +206,10 @@ export default function FantasyTeamBuilder() {
         }
 
         /*
-         * Automatically select the first unlocked day.
+         * Prefer the first unlocked day.
          *
-         * If all days are locked, select the last day so
-         * the user can still see their history.
+         * If every day is locked, show the last day
+         * so the user can still view their history.
          */
         const firstOpenDay =
           loadedDays.find(
@@ -220,11 +220,15 @@ export default function FantasyTeamBuilder() {
         setSelectedDay(firstOpenDay);
 
         /*
-         * Load players and saved selection for that day.
+         * Pass loadedTeams directly.
+         *
+         * Do NOT rely on setAllTeams() having completed,
+         * because React state updates are asynchronous.
          */
         await loadDay(
           firstOpenDay,
           fantasyTeam,
+          loadedTeams,
         );
       } catch (error) {
         setMessage(errorMessage(error));
@@ -237,16 +241,24 @@ export default function FantasyTeamBuilder() {
   }, [user]);
 
   /*
-   * Change tournament day.
+   * Switch between tournament days.
    */
   async function changeDay(day: TournamentDay) {
+    if (loadingDay || selectedDay?.id === day.id) {
+      return;
+    }
+
     setSelectedDay(day);
 
+    /*
+     * Build a temporary fantasy-team response using
+     * our current local day selections.
+     */
     await loadDay(day, {
       id: fantasyId ?? 0,
       user_id: user?.id ?? 0,
       days: daySelections,
-    });
+    }, allTeams);
   }
 
   function toggle(player: Player) {
@@ -257,12 +269,12 @@ export default function FantasyTeamBuilder() {
       return;
     }
 
-    if (
-      selected.some(
-        (playerItem) =>
-          playerItem.id === player.id,
-      )
-    ) {
+    const alreadySelected = selected.some(
+      (playerItem) =>
+        playerItem.id === player.id,
+    );
+
+    if (alreadySelected) {
       setSelected(
         selected.filter(
           (playerItem) =>
@@ -339,7 +351,9 @@ export default function FantasyTeamBuilder() {
       let id = fantasyId;
 
       /*
-       * Create the permanent fantasy team only once.
+       * The fantasy team itself is created only once.
+       *
+       * Every tournament day uses the same fantasy team.
        */
       if (!id) {
         const response =
@@ -351,20 +365,20 @@ export default function FantasyTeamBuilder() {
         setFantasyId(id);
       }
 
+      const playerIds = selected.map(
+        (player) => player.id,
+      );
+
       /*
-       * Save this day's four players.
-       *
-       * This does NOT touch previous days.
+       * Save players for THIS DAY only.
        */
       await api.selectPlayers(id, {
         day_id: selectedDay.id,
-        player_ids: selected.map(
-          (player) => player.id,
-        ),
+        player_ids: playerIds,
       });
 
       /*
-       * Save this day's captain.
+       * Save captain for THIS DAY only.
        */
       await api.captain(
         id,
@@ -373,30 +387,29 @@ export default function FantasyTeamBuilder() {
       );
 
       /*
-       * Update local history so changing between days
-       * immediately shows the newly saved selection.
+       * Update local history.
        */
       const newSelection: FantasyDaySelection = {
         id: 0,
         day_id: selectedDay.id,
         day_name: selectedDay.name,
-        player_ids: selected.map(
-          (player) => player.id,
-        ),
+        player_ids: playerIds,
         captain_player_id: captain,
       };
 
       setDaySelections((previous) => {
-        const withoutCurrent = previous.filter(
-          (selection) =>
-            selection.day_id !== selectedDay.id,
-        );
+        const withoutCurrent =
+          previous.filter(
+            (selection) =>
+              selection.day_id !== selectedDay.id,
+          );
 
         return [
           ...withoutCurrent,
           newSelection,
         ].sort(
-          (a, b) => a.day_id - b.day_id,
+          (a, b) =>
+            a.day_id - b.day_id,
         );
       });
 
@@ -419,7 +432,10 @@ export default function FantasyTeamBuilder() {
   if (!user) {
     return (
       <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
-        <a href="/" className="eyebrow">
+        <a
+          href="/"
+          className="eyebrow"
+        >
           ← FF / FANTASY
         </a>
 
@@ -499,8 +515,7 @@ export default function FantasyTeamBuilder() {
 
         <div className="flex flex-wrap gap-2">
           {days.map((day) => {
-            const locked =
-              isDayLocked(day);
+            const locked = isDayLocked(day);
 
             const hasSelection =
               daySelections.some(
@@ -508,18 +523,25 @@ export default function FantasyTeamBuilder() {
                   selection.day_id === day.id,
               );
 
+            const isActive =
+              selectedDay?.id === day.id;
+
             return (
               <button
                 type="button"
                 key={day.id}
+                disabled={
+                  loadingDay ||
+                  isActive
+                }
                 onClick={() =>
                   changeDay(day)
                 }
-                className={`border px-4 py-2 text-sm font-bold ${
-                  selectedDay?.id === day.id
+                className={`border px-4 py-2 text-sm font-bold transition ${
+                  isActive
                     ? "border-primary bg-primary/10"
-                    : "border-border bg-card"
-                }`}
+                    : "border-border bg-card hover:border-primary"
+                } disabled:cursor-not-allowed`}
               >
                 {day.name}
 
@@ -584,9 +606,7 @@ export default function FantasyTeamBuilder() {
               key={team.id}
               disabled={selectedDayLocked}
               onClick={() => {
-                setSelectedTeam(
-                  team.id,
-                );
+                setSelectedTeam(team.id);
                 setMessage("");
               }}
               className={`border px-4 py-2 text-sm font-bold ${
@@ -608,51 +628,48 @@ export default function FantasyTeamBuilder() {
         </p>
       ) : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {visiblePlayers.map(
-            (player) => {
-              const isSelected =
-                selected.some(
-                  (selectedPlayer) =>
-                    selectedPlayer.id ===
-                    player.id,
-                );
-
-              return (
-                <button
-                  type="button"
-                  key={player.id}
-                  disabled={selectedDayLocked}
-                  onClick={() =>
-                    toggle(player)
-                  }
-                  className={`border p-5 text-left ${
-                    isSelected
-                      ? "border-primary bg-primary/10"
-                      : "border-border bg-card"
-                  } disabled:cursor-not-allowed disabled:opacity-60`}
-                >
-                  <span className="text-xs text-muted-foreground">
-                    {teams.find(
-                      (team) =>
-                        team.id ===
-                        player.team_id,
-                    )?.name ||
-                      `Team ${player.team_id}`}
-                  </span>
-
-                  <strong className="mt-5 block font-mono uppercase">
-                    {player.nickname}
-                  </strong>
-
-                  {isSelected && (
-                    <span className="mt-3 block text-xs font-bold uppercase text-primary">
-                      Selected
-                    </span>
-                  )}
-                </button>
+          {visiblePlayers.map((player) => {
+            const isSelected =
+              selected.some(
+                (selectedPlayer) =>
+                  selectedPlayer.id ===
+                  player.id,
               );
-            },
-          )}
+
+            return (
+              <button
+                type="button"
+                key={player.id}
+                disabled={selectedDayLocked}
+                onClick={() =>
+                  toggle(player)
+                }
+                className={`border p-5 text-left ${
+                  isSelected
+                    ? "border-primary bg-primary/10"
+                    : "border-border bg-card"
+                } disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                <span className="text-xs text-muted-foreground">
+                  {teams.find(
+                    (team) =>
+                      team.id === player.team_id,
+                  )?.name ||
+                    `Team ${player.team_id}`}
+                </span>
+
+                <strong className="mt-5 block font-mono uppercase">
+                  {player.nickname}
+                </strong>
+
+                {isSelected && (
+                  <span className="mt-3 block text-xs font-bold uppercase text-primary">
+                    Selected
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -684,9 +701,7 @@ export default function FantasyTeamBuilder() {
                   captain === player.id
                 }
                 onChange={() =>
-                  setCaptain(
-                    player.id,
-                  )
+                  setCaptain(player.id)
                 }
               />
 
