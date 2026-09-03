@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
 
 	"ff-fantasy/database"
 	"ff-fantasy/handlers"
@@ -179,9 +180,14 @@ func main() {
 		),
 	)
 
-	fmt.Println("Server running on http://localhost:8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
 
-	if err := http.ListenAndServe(":8080", corsMiddleware(http.DefaultServeMux)); err != nil {
+	fmt.Println("Server running on port " + port)
+
+	if err := http.ListenAndServe(":"+port, corsMiddleware(http.DefaultServeMux)); err != nil {
 		fmt.Println(err)
 	}
 }
