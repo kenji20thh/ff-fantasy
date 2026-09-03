@@ -1,19 +1,27 @@
 import type { ApiError } from './types'
 import { API_URL } from './types'
 
-export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     credentials: 'include',
     cache: 'no-store',
-    headers: { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers ?? {}),
+    },
   })
 
   const data = await response.json().catch(() => null)
 
   if (!response.ok) {
     const error = new Error(
-      data?.error || data?.message || `Request failed (${response.status})`
+      data?.error ||
+        data?.message ||
+        `Request failed (${response.status})`
     ) as ApiError
 
     error.status = response.status
@@ -26,13 +34,20 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
 export const api = {
   me: () => apiFetch('/api/me'),
 
-  login: (body: { email: string; password: string }) =>
+  login: (body: {
+    identifier: string
+    password: string
+  }) =>
     apiFetch('/api/login', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
 
-  register: (body: { username: string; email: string; password: string }) =>
+  register: (body: {
+    username: string
+    email: string
+    password: string
+  }) =>
     apiFetch('/api/register', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -94,7 +109,11 @@ export const api = {
       body: JSON.stringify({ player_id }),
     }),
 
-  admin: (path: string, method: string, body?: unknown) =>
+  admin: (
+    path: string,
+    method: string,
+    body?: unknown
+  ) =>
     apiFetch(`/api/admin${path}`, {
       method,
       ...(body === undefined
@@ -102,4 +121,3 @@ export const api = {
         : { body: JSON.stringify(body) }),
     }),
 }
-

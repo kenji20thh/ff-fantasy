@@ -1,3 +1,136 @@
 'use client'
-import { FormEvent, useState } from 'react'; import { useRouter } from 'next/navigation'; import { useAuth } from '@/lib/auth';
-export default function Register(){const {register}=useAuth();const router=useRouter();const [form,setForm]=useState({username:'',email:'',password:''});const [error,setError]=useState('');const [busy,setBusy]=useState(false);async function submit(e:FormEvent){e.preventDefault();setBusy(true);setError('');try{await register(form.username,form.email,form.password);router.push('/login')}catch(err){setError(err instanceof Error?err.message:'Unable to register')}finally{setBusy(false)}}return <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5"><a href="/" className="eyebrow">FF / FANTASY</a><h1 className="section-title">Join the league.</h1><form onSubmit={submit} className="mt-8 space-y-4 border border-border bg-card p-6"><label className="block text-sm">Username<input required value={form.username} onChange={e=>setForm({...form,username:e.target.value})} className="mt-2 w-full border border-border bg-background p-3" /></label><label className="block text-sm">Email<input required type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} className="mt-2 w-full border border-border bg-background p-3" /></label><label className="block text-sm">Password<input required minLength={6} type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} className="mt-2 w-full border border-border bg-background p-3" /></label>{error&&<p className="text-sm text-red-400">{error}</p>}<button disabled={busy} className="w-full bg-primary p-3 font-bold text-primary-foreground">{busy?'Creating…':'Register'}</button><p className="text-sm text-muted-foreground">Already registered? <a className="text-primary" href="/login">Sign in</a></p></form></main>}
+
+import { FormEvent, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/auth'
+
+export default function Register() {
+  const { register } = useAuth()
+  const router = useRouter()
+
+  const [form, setForm] = useState({
+    username: '',
+    email: '',
+    password: '',
+  })
+
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+
+    setBusy(true)
+    setError('')
+
+    try {
+      await register(
+        form.username,
+        form.email,
+        form.password
+      )
+
+      // Registration now logs the user in automatically.
+      router.push('/dashboard')
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to register'
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5">
+      <a href="/" className="eyebrow">
+        FF / FANTASY
+      </a>
+
+      <h1 className="section-title">
+        Join the league.
+      </h1>
+
+      <form
+        onSubmit={submit}
+        className="mt-8 space-y-4 border border-border bg-card p-6"
+      >
+        <label className="block text-sm">
+          Username
+
+          <input
+            required
+            value={form.username}
+            onChange={e =>
+              setForm({
+                ...form,
+                username: e.target.value,
+              })
+            }
+            className="mt-2 w-full border border-border bg-background p-3"
+          />
+        </label>
+
+        <label className="block text-sm">
+          Email
+
+          <input
+            required
+            type="email"
+            value={form.email}
+            onChange={e =>
+              setForm({
+                ...form,
+                email: e.target.value,
+              })
+            }
+            className="mt-2 w-full border border-border bg-background p-3"
+          />
+        </label>
+
+        <label className="block text-sm">
+          Password
+
+          <input
+            required
+            minLength={6}
+            type="password"
+            value={form.password}
+            onChange={e =>
+              setForm({
+                ...form,
+                password: e.target.value,
+              })
+            }
+            className="mt-2 w-full border border-border bg-background p-3"
+          />
+        </label>
+
+        {error && (
+          <p className="text-sm text-red-400">
+            {error}
+          </p>
+        )}
+
+        <button
+          disabled={busy}
+          className="w-full bg-primary p-3 font-bold text-primary-foreground"
+        >
+          {busy ? 'Creating…' : 'Register'}
+        </button>
+
+        <p className="text-sm text-muted-foreground">
+          Already registered?{' '}
+          <a
+            className="text-primary"
+            href="/login"
+          >
+            Sign in
+          </a>
+        </p>
+      </form>
+    </main>
+  )
+}
