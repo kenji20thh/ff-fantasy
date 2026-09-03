@@ -78,3 +78,8 @@
 - **Deployment:** ⬜ Not started
 
 **Next step:** Implement 4-player selection.
+
+
+fix email password not correct
+fix teams during day only shows teams playing that day
+ 

@@ -132,7 +132,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		http.Error(w, "Invalid username/email or password", http.StatusUnauthorized)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid username/email or password",
+		})
 		return
 	}
 
@@ -140,7 +145,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		[]byte(passwordHash),
 		[]byte(request.Password),
 	); err != nil {
-		http.Error(w, "Invalid username/email or password", http.StatusUnauthorized)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid username/email or password",
+		})
 		return
 	}
 
