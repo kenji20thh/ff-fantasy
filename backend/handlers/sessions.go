@@ -50,7 +50,8 @@ func (s *SessionStore) SetCookie(w http.ResponseWriter, sessionID string) {
 		Name:     "session_id",
 		Value:    sessionID,
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteNoneMode,
+		Secure:   true,
 		Path:     "/",
 	})
 }
@@ -78,7 +79,8 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteNoneMode,
+		Secure:   true,
 		MaxAge:   -1,
 	})
 
