@@ -101,16 +101,29 @@ export const api = {
       body: JSON.stringify({ user_id }),
     }),
 
-  selectPlayers: (id: number, players: unknown) =>
+  selectPlayers: (
+    id: number,
+    body: {
+      day_id: number
+      player_ids: number[]
+    }
+  ) =>
     apiFetch(`/api/fantasy-teams/${id}/players`, {
       method: 'POST',
-      body: JSON.stringify(players),
+      body: JSON.stringify(body),
     }),
 
-  captain: (id: number, player_id: number) =>
+  captain: (
+    id: number,
+    day_id: number,
+    player_id: number
+  ) =>
     apiFetch(`/api/fantasy-teams/${id}/captain`, {
       method: 'POST',
-      body: JSON.stringify({ player_id }),
+      body: JSON.stringify({
+        day_id,
+        player_id,
+      }),
     }),
 
   admin: (
