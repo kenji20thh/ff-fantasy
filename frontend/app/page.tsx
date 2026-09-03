@@ -41,7 +41,7 @@ export default function Home() {
       api.myFantasyTeam().catch(error => {
         const apiError = error as { status?: number }
 
-        if (apiError.status === 404) {
+        if (apiError.status === 404 || apiError.status === 401) {
           return null
         }
 
