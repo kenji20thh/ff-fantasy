@@ -106,10 +106,25 @@ func (h *TeamHandler) GetRoomStats(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.DB.Query(
 		context.Background(),
-		`SELECT player_id, kills, assists, first_blood, placement
-		 FROM player_room_stats
-		 WHERE room_id = $1
-		 ORDER BY player_id`,
+		`SELECT
+			p.id,
+			p.team_id,
+			p.nickname,
+			COALESCE(p.picture_url, ''),
+			COALESCE(prs.kills, 0),
+			COALESCE(prs.assists, 0),
+			COALESCE(prs.first_blood, false),
+			COALESCE(prs.placement, 0)
+		FROM rooms r
+		JOIN tournament_day_teams tdt
+			ON tdt.tournament_day_id = r.tournament_day_id
+		JOIN players p
+			ON p.team_id = tdt.team_id
+		LEFT JOIN player_room_stats prs
+			ON prs.room_id = r.id
+			AND prs.player_id = p.id
+		WHERE r.id = $1
+		ORDER BY p.team_id, p.id`,
 		roomID,
 	)
 	if err != nil {
@@ -119,11 +134,12 @@ func (h *TeamHandler) GetRoomStats(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type PlayerRoomStats struct {
-		PlayerID   int  `json:"player_id"`
-		Kills      int  `json:"kills"`
-		Assists    int  `json:"assists"`
-		FirstBlood bool `json:"first_blood"`
-		Placement  int  `json:"placement"`
+		PlayerID   int           `json:"player_id"`
+		Player     models.Player `json:"player"`
+		Kills      int           `json:"kills"`
+		Assists    int           `json:"assists"`
+		FirstBlood bool          `json:"first_blood"`
+		Placement  int           `json:"placement"`
 	}
 
 	stats := []PlayerRoomStats{}
@@ -132,7 +148,10 @@ func (h *TeamHandler) GetRoomStats(w http.ResponseWriter, r *http.Request) {
 		var stat PlayerRoomStats
 
 		err := rows.Scan(
-			&stat.PlayerID,
+			&stat.Player.ID,
+			&stat.Player.TeamID,
+			&stat.Player.Nickname,
+			&stat.Player.PictureURL,
 			&stat.Kills,
 			&stat.Assists,
 			&stat.FirstBlood,
@@ -142,6 +161,8 @@ func (h *TeamHandler) GetRoomStats(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to read statistics", http.StatusInternalServerError)
 			return
 		}
+
+		stat.PlayerID = stat.Player.ID
 
 		stats = append(stats, stat)
 	}
