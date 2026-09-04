@@ -596,7 +596,7 @@ func (h *AdminTournamentDayHandler) GetTournamentDayKills(w http.ResponseWriter,
 			p.picture_url,
 			p.team_id,
 			t.name,
-			SUM(prs.kills) AS total_kills
+			SUM(prs.kills)::int AS total_kills
 		FROM player_room_stats prs
 		JOIN rooms r
 			ON r.id = prs.room_id
