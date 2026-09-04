@@ -118,6 +118,9 @@ export const api = {
   myFantasyTeam: () =>
     apiFetch('/api/fantasy-teams/mine'),
 
+  dayKills: (id: number) =>
+  apiFetch(`/api/tournament-days/${id}/kills`),
+
   createFantasy: (user_id: number) =>
     apiFetch('/api/fantasy-teams', {
       method: 'POST',

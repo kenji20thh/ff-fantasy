@@ -103,6 +103,11 @@ func main() {
 	http.HandleFunc("/api/me", authHandler.Me)
 
 	http.HandleFunc(
+		"/api/tournament-days/{id}/kills",
+		adminTournamentDayHandler.GetTournamentDayKills,
+	)
+
+	http.HandleFunc(
 		"/api/tournament-days",
 		adminTournamentDayHandler.GetTournamentDays,
 	)
