@@ -892,31 +892,16 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 
 		statRows.Close()
 
+		dayPlayerScores := make([]PlayerScore, 0, len(dayPlayers))
 		var dayTotal int
 
-		dayPlayerScores := make([]PlayerScore, 0, len(dayPlayers))
-
 		for _, player := range dayPlayers {
-			dayTotal += player.TotalPoints
-
 			if player.Captain {
 				player.TotalPoints *= 2
 			}
 
+			dayTotal += player.TotalPoints
 			dayPlayerScores = append(dayPlayerScores, *player)
-		}
-
-		// dayTotal needs to include the captain multiplier.
-		dayTotal = 0
-
-		for _, player := range dayPlayers {
-			points := player.TotalPoints
-
-			if player.Captain {
-				points *= 2
-			}
-
-			dayTotal += points
 		}
 
 		sort.Slice(dayPlayerScores, func(i, j int) bool {
