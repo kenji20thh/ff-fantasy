@@ -150,3 +150,12 @@ export type PlayerStatsResponse = {
   total: PlayerDayTotal
 }
 
+export type PlayerRanking = {
+  player_id: number
+  nickname: string
+  picture_url?: string
+  team_id: number
+  team_name: string
+  kills: number
+  points: number
+}
