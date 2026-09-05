@@ -51,6 +51,16 @@ type PlayerStatsResponse struct {
 	Total  PlayerDayTotal   `json:"total"`
 }
 
+type PlayerRanking struct {
+	PlayerID   int    `json:"player_id"`
+	Nickname   string `json:"nickname"`
+	PictureURL string `json:"picture_url"`
+	TeamID     int    `json:"team_id"`
+	TeamName   string `json:"team_name"`
+	Kills      int    `json:"kills"`
+	Points     int    `json:"points"`
+}
+
 func (h *PlayerHandler) GetPlayerStats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -253,4 +263,124 @@ func calculatePlayerPoints(
 	}
 
 	return points
+}
+
+func (h *PlayerHandler) GetPlayerRankings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	dayID := r.URL.Query().Get("day_id")
+	sortBy := r.URL.Query().Get("sort")
+
+	if sortBy == "" {
+		sortBy = "points"
+	}
+
+	if sortBy != "points" && sortBy != "kills" {
+		http.Error(w, "Invalid sort", http.StatusBadRequest)
+		return
+	}
+
+	ctx := context.Background()
+
+	query := `
+		SELECT
+			p.id,
+			p.nickname,
+			COALESCE(p.picture_url, ''),
+			p.team_id,
+			t.name,
+			SUM(prs.kills)::int AS kills,
+			SUM(
+				prs.kills * 10 +
+				prs.assists * 5 +
+				CASE WHEN prs.first_blood THEN 5 ELSE 0 END +
+				CASE prs.placement
+					WHEN 1 THEN 15
+					WHEN 2 THEN 12
+					WHEN 3 THEN 10
+					WHEN 4 THEN 8
+					WHEN 5 THEN 6
+					WHEN 6 THEN 5
+					WHEN 7 THEN 4
+					WHEN 8 THEN 3
+					WHEN 9 THEN 2
+					WHEN 10 THEN 1
+					ELSE 0
+				END
+			)::int AS points
+		FROM player_room_stats prs
+		JOIN rooms r
+			ON r.id = prs.room_id
+		JOIN players p
+			ON p.id = prs.player_id
+		JOIN teams t
+			ON t.id = p.team_id
+	`
+
+	args := []any{}
+
+	if dayID != "" {
+		id, err := strconv.Atoi(dayID)
+		if err != nil || id <= 0 {
+			http.Error(w, "Invalid day ID", http.StatusBadRequest)
+			return
+		}
+
+		query += ` WHERE r.tournament_day_id = $1`
+		args = append(args, id)
+	}
+
+	query += `
+		GROUP BY
+			p.id,
+			p.nickname,
+			p.picture_url,
+			p.team_id,
+			t.name
+	`
+
+	if sortBy == "kills" {
+		query += ` ORDER BY kills DESC, p.nickname ASC`
+	} else {
+		query += ` ORDER BY points DESC, p.nickname ASC`
+	}
+
+	rows, err := h.DB.Query(ctx, query, args...)
+	if err != nil {
+		http.Error(w, "Failed to get player rankings", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	rankings := []PlayerRanking{}
+
+	for rows.Next() {
+		var ranking PlayerRanking
+
+		if err := rows.Scan(
+			&ranking.PlayerID,
+			&ranking.Nickname,
+			&ranking.PictureURL,
+			&ranking.TeamID,
+			&ranking.TeamName,
+			&ranking.Kills,
+			&ranking.Points,
+		); err != nil {
+			http.Error(w, "Failed to read player rankings", http.StatusInternalServerError)
+			return
+		}
+
+		rankings = append(rankings, ranking)
+	}
+
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Failed to read player rankings", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(rankings)
 }
