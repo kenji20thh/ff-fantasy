@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
@@ -9,7 +9,7 @@ import { asArray, errorMessage } from '@/lib/types'
 
 import type { PlayerRanking, TournamentDay } from '@/lib/types'
 
-export default function PlayersPage() {
+function PlayersContent() {
   const searchParams = useSearchParams()
 
   const [days, setDays] = useState<TournamentDay[]>([])
@@ -210,5 +210,13 @@ export default function PlayersPage() {
         </div>
       )}
     </main>
+  )
+}
+
+export default function PlayersPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen" />}>
+      <PlayersContent />
+    </Suspense>
   )
 }
