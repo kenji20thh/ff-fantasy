@@ -112,49 +112,62 @@ func (h *PlacementHandler) GetPlacement(w http.ResponseWriter, r *http.Request) 
 }
 
 const placementRoomQuery = `
-WITH team_stats AS (
-	SELECT
-		t.id AS team_id,
-		t.name AS team_name,
-		prs.room_id,
-
-		MAX(
-			CASE prs.placement
-				WHEN 1 THEN 12
-				WHEN 2 THEN 9
-				WHEN 3 THEN 8
-				WHEN 4 THEN 7
-				WHEN 5 THEN 6
-				WHEN 6 THEN 5
-				WHEN 7 THEN 4
-				WHEN 8 THEN 3
-				WHEN 9 THEN 2
-				WHEN 10 THEN 1
-				ELSE 0
-			END
-		) AS placement_points,
-
-		SUM(prs.kills) AS kills
-
-	FROM player_room_stats prs
-	JOIN players p
-		ON p.id = prs.player_id
-	JOIN teams t
-		ON t.id = p.team_id
-
-	WHERE prs.room_id = $1
-
-	GROUP BY t.id, t.name, prs.room_id
-)
-
 SELECT
-	team_id,
-	team_name,
-	placement_points,
-	kills,
-	placement_points + kills AS points,
-	1 AS rooms_played
-FROM team_stats
+    t.id AS team_id,
+    t.name AS team_name,
+
+    CASE MIN(prs.placement)
+        WHEN 1 THEN 12
+        WHEN 2 THEN 9
+        WHEN 3 THEN 8
+        WHEN 4 THEN 7
+        WHEN 5 THEN 6
+        WHEN 6 THEN 5
+        WHEN 7 THEN 4
+        WHEN 8 THEN 3
+        WHEN 9 THEN 2
+        ELSE 0
+    END AS placement_points,
+
+    COALESCE(SUM(prs.kills), 0)::int AS kills,
+
+    (
+        CASE MIN(prs.placement)
+            WHEN 1 THEN 12
+            WHEN 2 THEN 9
+            WHEN 3 THEN 8
+            WHEN 4 THEN 7
+            WHEN 5 THEN 6
+            WHEN 6 THEN 5
+            WHEN 7 THEN 4
+            WHEN 8 THEN 3
+            WHEN 9 THEN 2
+            ELSE 0
+        END
+        + COALESCE(SUM(prs.kills), 0)
+    )::int AS points,
+
+    1 AS rooms_played
+
+FROM rooms r
+
+JOIN tournament_day_teams tdt
+    ON tdt.tournament_day_id = r.tournament_day_id
+
+JOIN teams t
+    ON t.id = tdt.team_id
+
+JOIN players p
+    ON p.team_id = t.id
+
+JOIN player_room_stats prs
+    ON prs.player_id = p.id
+    AND prs.room_id = r.id
+
+WHERE r.id = $1
+
+GROUP BY t.id, t.name
+
 ORDER BY points DESC, kills DESC, team_name;
 `
 
