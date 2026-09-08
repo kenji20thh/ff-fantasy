@@ -1,177 +1,159 @@
-'use client'
+"use client";
 
-import { useEffect, useMemo, useState } from 'react'
-import { api } from '@/lib/api'
-import { asArray, errorMessage } from '@/lib/types'
+import { useEffect, useMemo, useState } from "react";
+import { api } from "@/lib/api";
+import { asArray, errorMessage } from "@/lib/types";
 
-import type {
-  PlacementTeam,
-  TournamentDay,
-  Room,
-} from '@/lib/types'
+import type { PlacementTeam, TournamentDay, Room } from "@/lib/types";
 
-type View = 'overall' | 'week' | 'day' | 'room'
+type View = "overall" | "week" | "day" | "room";
 
 export default function PlacementPage() {
-  const [view, setView] = useState<View>('overall')
+  const [view, setView] = useState<View>("overall");
 
-  const [days, setDays] = useState<TournamentDay[]>([])
-  const [rooms, setRooms] = useState<Room[]>([])
+  const [days, setDays] = useState<TournamentDay[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
 
-  const [selectedWeek, setSelectedWeek] = useState('')
-  const [selectedDay, setSelectedDay] = useState<number | null>(null)
-  const [selectedRoom, setSelectedRoom] = useState<number | null>(null)
+  const [selectedWeek, setSelectedWeek] = useState("");
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<number | null>(null);
 
-  const [placement, setPlacement] = useState<PlacementTeam[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [placement, setPlacement] = useState<PlacementTeam[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     async function loadDays() {
       try {
-        const data = await api.days()
-        const list = asArray<TournamentDay>(data)
+        const data = await api.days();
+        const list = asArray<TournamentDay>(data);
 
-        setDays(list)
+        setDays(list);
 
         if (list.length > 0) {
-          const firstWeek = list[0].name.split(' ')[0]
-          setSelectedWeek(firstWeek)
-          setSelectedDay(list[0].id)
+          const firstWeek = list[0].name.split(" ")[0];
+          setSelectedWeek(firstWeek);
+          setSelectedDay(list[0].id);
         }
       } catch (err) {
-        setError(errorMessage(err))
+        setError(errorMessage(err));
       }
     }
 
-    loadDays()
-  }, [])
+    loadDays();
+  }, []);
 
   useEffect(() => {
     async function loadRooms() {
       if (selectedDay === null) {
-        setRooms([])
-        return
+        setRooms([]);
+        return;
       }
 
       try {
-        const data = await api.rooms(selectedDay)
-        setRooms(asArray<Room>(data))
+        const data = await api.rooms(selectedDay);
+        setRooms(asArray<Room>(data));
       } catch (err) {
-        setError(errorMessage(err))
+        setError(errorMessage(err));
       }
     }
 
-    loadRooms()
-  }, [selectedDay])
+    loadRooms();
+  }, [selectedDay]);
 
   useEffect(() => {
     async function loadPlacement() {
-      setLoading(true)
-      setError('')
+      setLoading(true);
+      setError("");
 
       try {
-        let data: unknown
+        let data: unknown;
 
-        if (view === 'overall') {
-          data = await api.placementOverall()
-        } else if (view === 'week') {
-          if (!selectedWeek) return
-          data = await api.placementWeek(selectedWeek)
-        } else if (view === 'day') {
-          if (selectedDay === null) return
-          data = await api.placementDay(selectedDay)
+        if (view === "overall") {
+          data = await api.placementOverall();
+        } else if (view === "week") {
+          if (!selectedWeek) return;
+          data = await api.placementWeek(selectedWeek);
+        } else if (view === "day") {
+          if (selectedDay === null) return;
+          data = await api.placementDay(selectedDay);
         } else {
-          if (selectedRoom === null) return
-          data = await api.placementRoom(selectedRoom)
+          if (selectedRoom === null) return;
+          data = await api.placementRoom(selectedRoom);
         }
 
-        setPlacement(asArray<PlacementTeam>(data))
+        setPlacement(asArray<PlacementTeam>(data));
       } catch (err) {
-        setError(errorMessage(err))
-        setPlacement([])
+        setError(errorMessage(err));
+        setPlacement([]);
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
     }
 
-    loadPlacement()
-  }, [view, selectedWeek, selectedDay, selectedRoom])
+    loadPlacement();
+  }, [view, selectedWeek, selectedDay, selectedRoom]);
 
   const weeks = useMemo(() => {
-    const values = days
-      .map((day) => day.name.split(' ')[0])
-      .filter(Boolean)
+    const values = days.map((day) => day.name.split(" ")[0]).filter(Boolean);
 
-    return [...new Set(values)]
-  }, [days])
+    return [...new Set(values)];
+  }, [days]);
 
   const filteredDays = useMemo(() => {
-    return days.filter(
-      (day) => day.name.split(' ')[0] === selectedWeek,
-    )
-  }, [days, selectedWeek])
+    return days.filter((day) => day.name.split(" ")[0] === selectedWeek);
+  }, [days, selectedWeek]);
 
   function handleWeekChange(value: string) {
-    setSelectedWeek(value)
+    setSelectedWeek(value);
 
-    const firstDay = days.find(
-      (day) => day.name.split(' ')[0] === value,
-    )
+    const firstDay = days.find((day) => day.name.split(" ")[0] === value);
 
-    setSelectedDay(firstDay?.id ?? null)
-    setSelectedRoom(null)
+    setSelectedDay(firstDay?.id ?? null);
+    setSelectedRoom(null);
   }
 
   function handleDayChange(value: string) {
-    const dayId = Number(value)
+    const dayId = Number(value);
 
-    setSelectedDay(dayId)
-    setSelectedRoom(null)
+    setSelectedDay(dayId);
+    setSelectedRoom(null);
   }
 
   function handleRoomChange(value: string) {
-    setSelectedRoom(Number(value))
+    setSelectedRoom(Number(value));
   }
 
   return (
     <main className="min-h-screen bg-black px-4 py-8 text-white md:px-8">
       <div className="mx-auto max-w-6xl">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold">
-            Placement
-          </h1>
+          <h1 className="text-3xl font-bold">Placement</h1>
 
-          <p className="mt-2 text-sm text-zinc-400">
-            Tournament standings
-          </p>
+          <p className="mt-2 text-sm text-zinc-400">Tournament standings</p>
         </div>
 
         <div className="mb-6 flex flex-wrap gap-2">
-          {(['overall', 'week', 'day', 'room'] as View[]).map(
-            (item) => (
-              <button
-                key={item}
-                onClick={() => setView(item)}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                  view === item
-                    ? 'bg-white text-black'
-                    : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
-                }`}
-              >
-                {item === 'overall'
-                  ? 'Overall'
-                  : item.charAt(0).toUpperCase() + item.slice(1)}
-              </button>
-            ),
-          )}
+          {(["overall", "week", "day", "room"] as View[]).map((item) => (
+            <button
+              key={item}
+              onClick={() => setView(item)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                view === item
+                  ? "bg-white text-black"
+                  : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+              }`}
+            >
+              {item === "overall"
+                ? "Overall"
+                : item.charAt(0).toUpperCase() + item.slice(1)}
+            </button>
+          ))}
         </div>
 
-        {view === 'week' && (
+        {view === "week" && (
           <div className="mb-6">
-            <label className="mb-2 block text-sm text-zinc-400">
-              Week
-            </label>
+            <label className="mb-2 block text-sm text-zinc-400">Week</label>
 
             <select
               value={selectedWeek}
@@ -187,14 +169,12 @@ export default function PlacementPage() {
           </div>
         )}
 
-        {(view === 'day' || view === 'room') && (
+        {(view === "day" || view === "room") && (
           <div className="mb-6">
-            <label className="mb-2 block text-sm text-zinc-400">
-              Day
-            </label>
+            <label className="mb-2 block text-sm text-zinc-400">Day</label>
 
             <select
-              value={selectedDay ?? ''}
+              value={selectedDay ?? ""}
               onChange={(e) => handleDayChange(e.target.value)}
               className="w-full max-w-md rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-white outline-none"
             >
@@ -207,14 +187,12 @@ export default function PlacementPage() {
           </div>
         )}
 
-        {view === 'room' && (
+        {view === "room" && (
           <div className="mb-6">
-            <label className="mb-2 block text-sm text-zinc-400">
-              Room
-            </label>
+            <label className="mb-2 block text-sm text-zinc-400">Room</label>
 
             <select
-              value={selectedRoom ?? ''}
+              value={selectedRoom ?? ""}
               onChange={(e) => handleRoomChange(e.target.value)}
               className="w-full max-w-md rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-white outline-none"
             >
@@ -238,19 +216,17 @@ export default function PlacementPage() {
         )}
 
         <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-          <div className="grid grid-cols-[60px_1fr_120px_100px_100px_100px] gap-4 border-b border-zinc-800 bg-zinc-900 px-5 py-4 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+          <div className="grid grid-cols-[60px_1fr_120px_100px_120px_100px] gap-4 border-b border-zinc-800 bg-zinc-900 px-5 py-4 text-xs font-semibold uppercase tracking-wide text-zinc-400">
             <div>#</div>
             <div>Team</div>
-            <div>Placement</div>
+            <div>Total Points</div>
             <div>Kills</div>
-            <div>Total</div>
+            <div>Placement</div>
             <div>Rooms</div>
           </div>
 
           {loading ? (
-            <div className="p-8 text-center text-zinc-500">
-              Loading...
-            </div>
+            <div className="p-8 text-center text-zinc-500">Loading...</div>
           ) : placement.length === 0 ? (
             <div className="p-8 text-center text-zinc-500">
               No placement data available.
@@ -259,36 +235,24 @@ export default function PlacementPage() {
             placement.map((team, index) => (
               <div
                 key={team.team_id}
-                className="grid grid-cols-[60px_1fr_120px_100px_100px_100px] gap-4 border-b border-zinc-900 px-5 py-4 text-sm last:border-b-0"
+                className="grid grid-cols-[60px_1fr_120px_100px_120px_100px] gap-4 border-b border-zinc-900 px-5 py-4 text-sm last:border-b-0"
               >
-                <div className="font-bold text-zinc-400">
-                  {index + 1}
-                </div>
+                <div className="font-bold text-zinc-400">{index + 1}</div>
 
-                <div className="font-semibold">
-                  {team.team_name}
-                </div>
+                <div className="font-semibold">{team.team_name}</div>
 
-                <div>
-                  {team.placement_points}
-                </div>
+                <div className="font-bold">{team.points}</div>
 
-                <div>
-                  {team.kills}
-                </div>
+                <div>{team.kills}</div>
 
-                <div className="font-bold">
-                  {team.points}
-                </div>
+                <div>{team.placement_points}</div>
 
-                <div className="text-zinc-400">
-                  {team.rooms_played}
-                </div>
+                <div className="text-zinc-400">{team.rooms_played}</div>
               </div>
             ))
           )}
         </div>
       </div>
     </main>
-  )
+  );
 }
