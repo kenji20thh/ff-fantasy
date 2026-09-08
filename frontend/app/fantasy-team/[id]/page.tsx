@@ -47,6 +47,9 @@ total_points: number
 }
 
 type FantasyPointsResponse = {
+day_id: number
+day_name: string
+captain_player_id?: number | null
 fantasy_team_id: number
 total_points: number
 players: PlayerScore[]
