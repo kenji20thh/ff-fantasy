@@ -59,6 +59,16 @@ func (h *PlacementHandler) GetPlacement(w http.ResponseWriter, r *http.Request) 
 	case "overall":
 		query = placementOverallQuery
 
+	case "week":
+		week := r.URL.Query().Get("week")
+		if week == "" {
+			http.Error(w, "Invalid week", http.StatusBadRequest)
+			return
+		}
+
+		query = placementWeekQuery
+		args = []any{week}
+
 	default:
 		http.Error(w, "Invalid scope", http.StatusBadRequest)
 		return
