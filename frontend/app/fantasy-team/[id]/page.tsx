@@ -133,9 +133,17 @@ teams.find(team => team.id === teamID)?.name ||
 }
 
 function getPlayerScore(playerID: number) {
-return points?.players.find(
-player => player.player_id === playerID
-)
+  if (!points || !selectedDay) {
+    return undefined
+  }
+
+  const dayScore = points.days?.find(
+    day => day.day_id === selectedDay.id
+  )
+
+  return dayScore?.players.find(
+    player => player.player_id === playerID
+  )
 }
 
 function getParticipatingTeamIDs(day: TournamentDay) {
