@@ -83,10 +83,15 @@ func main() {
 		DB: conn,
 	}
 
+	placementHandler := &handlers.PlacementHandler{
+		DB: conn,
+	}
+
 	http.HandleFunc("/api/teams", teamHandler.GetTeams)
 	http.HandleFunc("/api/teams/{id}/players", teamHandler.GetPlayers)
 	http.HandleFunc("/api/players/{id}/stats", playerHandler.GetPlayerStats)
 	http.HandleFunc("/api/player-rankings", playerHandler.GetPlayerRankings)
+	http.HandleFunc("/api/placement", placementHandler.GetPlacement)
 
 	http.HandleFunc("/api/fantasy-teams", fantasyTeamHandler.CreateFantasyTeam)
 	http.HandleFunc("/api/fantasy-teams/mine", fantasyTeamHandler.GetMyFantasyTeam)
