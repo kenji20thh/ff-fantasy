@@ -1,4 +1,4 @@
-import type { ApiError } from "./types";
+import type { ApiError, PlacementTeam } from "./types";
 import { API_URL } from "./types";
 
 export async function apiFetch<T>(
@@ -129,7 +129,7 @@ export const api = {
       method,
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }),
-    
+
   playerRankings: (dayId?: number, sort: "points" | "kills" = "points") => {
     const params = new URLSearchParams();
 
@@ -141,4 +141,18 @@ export const api = {
 
     return apiFetch(`/api/player-rankings?${params.toString()}`);
   },
+
+  placementRoom: (roomId: number) =>
+    apiFetch<PlacementTeam[]>(`/api/placement?scope=room&room_id=${roomId}`),
+
+  placementDay: (dayId: number) =>
+    apiFetch<PlacementTeam[]>(`/api/placement?scope=day&day_id=${dayId}`),
+
+  placementWeek: (week: string) =>
+    apiFetch<PlacementTeam[]>(
+      `/api/placement?scope=week&week=${encodeURIComponent(week)}`,
+    ),
+
+  placementOverall: () =>
+    apiFetch<PlacementTeam[]>("/api/placement?scope=overall"),
 };
