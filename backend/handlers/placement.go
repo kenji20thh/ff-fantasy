@@ -147,7 +147,10 @@ SELECT
         + COALESCE(SUM(prs.kills), 0)
     )::int AS points,
 
-    1 AS rooms_played
+    CASE
+        WHEN COUNT(prs.player_id) > 0 THEN 1
+        ELSE 0
+    END AS rooms_played
 
 FROM rooms r
 
@@ -157,10 +160,10 @@ JOIN tournament_day_teams tdt
 JOIN teams t
     ON t.id = tdt.team_id
 
-JOIN players p
+LEFT JOIN players p
     ON p.team_id = t.id
 
-JOIN player_room_stats prs
+LEFT JOIN player_room_stats prs
     ON prs.player_id = p.id
     AND prs.room_id = r.id
 
