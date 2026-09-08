@@ -46,6 +46,14 @@ rooms: RoomScore[]
 total_points: number
 }
 
+type FantasyDayScore = {
+  day_id: number
+  day_name: string
+  captain_player_id?: number | null
+  total_points: number
+  players: PlayerScore[]
+}
+
 type FantasyPointsResponse = {
 fantasy_team_id: number
 total_points: number
