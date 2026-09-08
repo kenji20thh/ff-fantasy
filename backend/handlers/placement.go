@@ -119,6 +119,7 @@ WITH team_stats AS (
 				WHEN 7 THEN 4
 				WHEN 8 THEN 3
 				WHEN 9 THEN 2
+				WHEN 10 THEN 1
 				ELSE 0
 			END
 		) AS placement_points,
@@ -165,6 +166,7 @@ WITH team_room_stats AS (
 				WHEN 7 THEN 4
 				WHEN 8 THEN 3
 				WHEN 9 THEN 2
+				WHEN 10 THEN 1
 				ELSE 0
 			END
 		) AS placement_points,
@@ -214,6 +216,7 @@ WITH team_room_stats AS (
 				WHEN 7 THEN 4
 				WHEN 8 THEN 3
 				WHEN 9 THEN 2
+				WHEN 10 THEN 1
 				ELSE 0
 			END
 		) AS placement_points,
@@ -227,6 +230,61 @@ WITH team_room_stats AS (
 		ON t.id = p.team_id
 
 	GROUP BY t.id, t.name, prs.room_id
+)
+
+SELECT
+	team_id,
+	team_name,
+	SUM(placement_points)::int AS placement_points,
+	SUM(kills)::int AS kills,
+	SUM(placement_points + kills)::int AS points,
+	COUNT(*)::int AS rooms_played
+FROM team_room_stats
+GROUP BY team_id, team_name
+ORDER BY points DESC, kills DESC, team_name;
+`
+
+const placementWeekQuery = `
+WITH team_room_stats AS (
+	SELECT
+		t.id AS team_id,
+		t.name AS team_name,
+		prs.room_id,
+
+		MAX(
+			CASE prs.placement
+				WHEN 1 THEN 12
+				WHEN 2 THEN 9
+				WHEN 3 THEN 8
+				WHEN 4 THEN 7
+				WHEN 5 THEN 6
+				WHEN 6 THEN 5
+				WHEN 7 THEN 4
+				WHEN 8 THEN 3
+				WHEN 9 THEN 2
+				WHEN 10 THEN 1
+				ELSE 0
+			END
+		) AS placement_points,
+
+		SUM(prs.kills) AS kills
+
+	FROM player_room_stats prs
+	JOIN players p
+		ON p.id = prs.player_id
+	JOIN teams t
+		ON t.id = p.team_id
+	JOIN rooms r
+		ON r.id = prs.room_id
+	JOIN tournament_days td
+		ON td.id = r.tournament_day_id
+
+	WHERE td.name LIKE $1 || ' %'
+
+	GROUP BY
+		t.id,
+		t.name,
+		prs.room_id
 )
 
 SELECT
