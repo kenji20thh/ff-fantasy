@@ -56,9 +56,6 @@ func (h *PlacementHandler) GetPlacement(w http.ResponseWriter, r *http.Request) 
 		query = placementDayQuery
 		args = []any{dayID}
 
-	case "overall":
-		query = placementOverallQuery
-
 	case "week":
 		week := r.URL.Query().Get("week")
 		if week == "" {
@@ -68,6 +65,9 @@ func (h *PlacementHandler) GetPlacement(w http.ResponseWriter, r *http.Request) 
 
 		query = placementWeekQuery
 		args = []any{week}
+
+	case "overall":
+		query = placementOverallQuery
 
 	default:
 		http.Error(w, "Invalid scope", http.StatusBadRequest)
@@ -113,61 +113,51 @@ func (h *PlacementHandler) GetPlacement(w http.ResponseWriter, r *http.Request) 
 
 const placementRoomQuery = `
 SELECT
-    t.id AS team_id,
-    t.name AS team_name,
+	t.id AS team_id,
+	t.name AS team_name,
 
-    CASE MIN(prs.placement)
-        WHEN 1 THEN 12
-        WHEN 2 THEN 9
-        WHEN 3 THEN 8
-        WHEN 4 THEN 7
-        WHEN 5 THEN 6
-        WHEN 6 THEN 5
-        WHEN 7 THEN 4
-        WHEN 8 THEN 3
-        WHEN 9 THEN 2
-        ELSE 0
-    END AS placement_points,
+	CASE MIN(prs.placement)
+		WHEN 1 THEN 12
+		WHEN 2 THEN 9
+		WHEN 3 THEN 8
+		WHEN 4 THEN 7
+		WHEN 5 THEN 6
+		WHEN 6 THEN 5
+		WHEN 7 THEN 4
+		WHEN 8 THEN 3
+		WHEN 9 THEN 2
+		WHEN 10 THEN 1
+		ELSE 0
+	END AS placement_points,
 
-    COALESCE(SUM(prs.kills), 0)::int AS kills,
+	COALESCE(SUM(prs.kills), 0)::int AS kills,
 
-    (
-        CASE MIN(prs.placement)
-            WHEN 1 THEN 12
-            WHEN 2 THEN 9
-            WHEN 3 THEN 8
-            WHEN 4 THEN 7
-            WHEN 5 THEN 6
-            WHEN 6 THEN 5
-            WHEN 7 THEN 4
-            WHEN 8 THEN 3
-            WHEN 9 THEN 2
-            ELSE 0
-        END
-        + COALESCE(SUM(prs.kills), 0)
-    )::int AS points,
+	(
+		CASE MIN(prs.placement)
+			WHEN 1 THEN 12
+			WHEN 2 THEN 9
+			WHEN 3 THEN 8
+			WHEN 4 THEN 7
+			WHEN 5 THEN 6
+			WHEN 6 THEN 5
+			WHEN 7 THEN 4
+			WHEN 8 THEN 3
+			WHEN 9 THEN 2
+			WHEN 10 THEN 1
+			ELSE 0
+		END
+		+ COALESCE(SUM(prs.kills), 0)
+	)::int AS points,
 
-    CASE
-        WHEN COUNT(prs.player_id) > 0 THEN 1
-        ELSE 0
-    END AS rooms_played
+	1 AS rooms_played
 
-FROM rooms r
-
-JOIN tournament_day_teams tdt
-    ON tdt.tournament_day_id = r.tournament_day_id
-
+FROM player_room_stats prs
+JOIN players p
+	ON p.id = prs.player_id
 JOIN teams t
-    ON t.id = tdt.team_id
+	ON t.id = p.team_id
 
-LEFT JOIN players p
-    ON p.team_id = t.id
-
-LEFT JOIN player_room_stats prs
-    ON prs.player_id = p.id
-    AND prs.room_id = r.id
-
-WHERE r.id = $1
+WHERE prs.room_id = $1
 
 GROUP BY t.id, t.name
 
@@ -181,35 +171,39 @@ WITH team_room_stats AS (
 		t.name AS team_name,
 		prs.room_id,
 
-		MAX(
-			CASE prs.placement
-				WHEN 1 THEN 12
-				WHEN 2 THEN 9
-				WHEN 3 THEN 8
-				WHEN 4 THEN 7
-				WHEN 5 THEN 6
-				WHEN 6 THEN 5
-				WHEN 7 THEN 4
-				WHEN 8 THEN 3
-				WHEN 9 THEN 2
-				WHEN 10 THEN 1
-				ELSE 0
-			END
-		) AS placement_points,
+		CASE MIN(prs.placement)
+			WHEN 1 THEN 12
+			WHEN 2 THEN 9
+			WHEN 3 THEN 8
+			WHEN 4 THEN 7
+			WHEN 5 THEN 6
+			WHEN 6 THEN 5
+			WHEN 7 THEN 4
+			WHEN 8 THEN 3
+			WHEN 9 THEN 2
+			WHEN 10 THEN 1
+			ELSE 0
+		END AS placement_points,
 
-		SUM(prs.kills) AS kills
+		COALESCE(SUM(prs.kills), 0)::int AS kills
 
 	FROM player_room_stats prs
+
 	JOIN players p
 		ON p.id = prs.player_id
+
 	JOIN teams t
 		ON t.id = p.team_id
+
 	JOIN rooms r
 		ON r.id = prs.room_id
 
 	WHERE r.tournament_day_id = $1
 
-	GROUP BY t.id, t.name, prs.room_id
+	GROUP BY
+		t.id,
+		t.name,
+		prs.room_id
 )
 
 SELECT
@@ -219,54 +213,11 @@ SELECT
 	SUM(kills)::int AS kills,
 	SUM(placement_points + kills)::int AS points,
 	COUNT(*)::int AS rooms_played
+
 FROM team_room_stats
+
 GROUP BY team_id, team_name
-ORDER BY points DESC, kills DESC, team_name;
-`
 
-const placementOverallQuery = `
-WITH team_room_stats AS (
-	SELECT
-		t.id AS team_id,
-		t.name AS team_name,
-		prs.room_id,
-
-		MAX(
-			CASE prs.placement
-				WHEN 1 THEN 12
-				WHEN 2 THEN 9
-				WHEN 3 THEN 8
-				WHEN 4 THEN 7
-				WHEN 5 THEN 6
-				WHEN 6 THEN 5
-				WHEN 7 THEN 4
-				WHEN 8 THEN 3
-				WHEN 9 THEN 2
-				WHEN 10 THEN 1
-				ELSE 0
-			END
-		) AS placement_points,
-
-		SUM(prs.kills) AS kills
-
-	FROM player_room_stats prs
-	JOIN players p
-		ON p.id = prs.player_id
-	JOIN teams t
-		ON t.id = p.team_id
-
-	GROUP BY t.id, t.name, prs.room_id
-)
-
-SELECT
-	team_id,
-	team_name,
-	SUM(placement_points)::int AS placement_points,
-	SUM(kills)::int AS kills,
-	SUM(placement_points + kills)::int AS points,
-	COUNT(*)::int AS rooms_played
-FROM team_room_stats
-GROUP BY team_id, team_name
 ORDER BY points DESC, kills DESC, team_name;
 `
 
@@ -277,31 +228,33 @@ WITH team_room_stats AS (
 		t.name AS team_name,
 		prs.room_id,
 
-		MAX(
-			CASE prs.placement
-				WHEN 1 THEN 12
-				WHEN 2 THEN 9
-				WHEN 3 THEN 8
-				WHEN 4 THEN 7
-				WHEN 5 THEN 6
-				WHEN 6 THEN 5
-				WHEN 7 THEN 4
-				WHEN 8 THEN 3
-				WHEN 9 THEN 2
-				WHEN 10 THEN 1
-				ELSE 0
-			END
-		) AS placement_points,
+		CASE MIN(prs.placement)
+			WHEN 1 THEN 12
+			WHEN 2 THEN 9
+			WHEN 3 THEN 8
+			WHEN 4 THEN 7
+			WHEN 5 THEN 6
+			WHEN 6 THEN 5
+			WHEN 7 THEN 4
+			WHEN 8 THEN 3
+			WHEN 9 THEN 2
+			WHEN 10 THEN 1
+			ELSE 0
+		END AS placement_points,
 
-		SUM(prs.kills) AS kills
+		COALESCE(SUM(prs.kills), 0)::int AS kills
 
 	FROM player_room_stats prs
+
 	JOIN players p
 		ON p.id = prs.player_id
+
 	JOIN teams t
 		ON t.id = p.team_id
+
 	JOIN rooms r
 		ON r.id = prs.room_id
+
 	JOIN tournament_days td
 		ON td.id = r.tournament_day_id
 
@@ -320,7 +273,62 @@ SELECT
 	SUM(kills)::int AS kills,
 	SUM(placement_points + kills)::int AS points,
 	COUNT(*)::int AS rooms_played
+
 FROM team_room_stats
+
 GROUP BY team_id, team_name
+
+ORDER BY points DESC, kills DESC, team_name;
+`
+
+const placementOverallQuery = `
+WITH team_room_stats AS (
+	SELECT
+		t.id AS team_id,
+		t.name AS team_name,
+		prs.room_id,
+
+		CASE MIN(prs.placement)
+			WHEN 1 THEN 12
+			WHEN 2 THEN 9
+			WHEN 3 THEN 8
+			WHEN 4 THEN 7
+			WHEN 5 THEN 6
+			WHEN 6 THEN 5
+			WHEN 7 THEN 4
+			WHEN 8 THEN 3
+			WHEN 9 THEN 2
+			WHEN 10 THEN 1
+			ELSE 0
+		END AS placement_points,
+
+		COALESCE(SUM(prs.kills), 0)::int AS kills
+
+	FROM player_room_stats prs
+
+	JOIN players p
+		ON p.id = prs.player_id
+
+	JOIN teams t
+		ON t.id = p.team_id
+
+	GROUP BY
+		t.id,
+		t.name,
+		prs.room_id
+)
+
+SELECT
+	team_id,
+	team_name,
+	SUM(placement_points)::int AS placement_points,
+	SUM(kills)::int AS kills,
+	SUM(placement_points + kills)::int AS points,
+	COUNT(*)::int AS rooms_played
+
+FROM team_room_stats
+
+GROUP BY team_id, team_name
+
 ORDER BY points DESC, kills DESC, team_name;
 `
