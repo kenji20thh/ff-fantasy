@@ -6,6 +6,23 @@ import { api } from '@/lib/api'
 import { asArray, errorMessage } from '@/lib/types'
 import type { Team } from '@/lib/types'
 
+function TeamLogo({ teamId, teamName }: { teamId: number; teamName: string }) {
+  const [failed, setFailed] = useState(false)
+
+  if (failed) {
+    return <div className="h-14 w-14 shrink-0 rounded-full border border-border" />
+  }
+
+  return (
+    <img
+      src={`/logos/${teamId}.png`}
+      alt={`${teamName} logo`}
+      onError={() => setFailed(true)}
+      className="h-14 w-14 object-contain"
+    />
+  )
+}
+
 export default function Teams() {
   const [data, setData] = useState<Team[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,13 +72,7 @@ export default function Teams() {
             <p className="eyebrow">Team {team.id}</p>
 
             <div className="mt-6 flex items-center gap-4">
-              {team.logo_url && (
-                <img
-                  src={team.logo_url}
-                  alt={`${team.name} logo`}
-                  className="h-14 w-14 object-contain"
-                />
-              )}
+              <TeamLogo teamId={team.id} teamName={team.name} />
 
               <h2 className="font-mono text-xl font-bold uppercase">
                 {team.name}
@@ -77,4 +88,3 @@ export default function Teams() {
     </main>
   )
 }
-
