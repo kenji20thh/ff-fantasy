@@ -44,6 +44,23 @@ function dayNumber(d: TournamentDay) {
   return parseDayName(d.name).day ?? 0;
 }
 
+function TeamLogo({ teamId, teamName }: { teamId: number; teamName: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return <div className="h-10 w-10 shrink-0 rounded-full border border-border" />;
+  }
+
+  return (
+    <img
+      src={`/logos/${teamId}.png`}
+      alt={teamName}
+      onError={() => setFailed(true)}
+      className="h-10 w-10 shrink-0 rounded-full border border-border bg-background object-contain p-1"
+    />
+  );
+}
+
 function PlayersContent() {
   const searchParams = useSearchParams();
 
@@ -375,15 +392,7 @@ function PlayersContent() {
                 </span>
 
                 <div className="flex min-w-0 items-center gap-4">
-                  {player.picture_url ? (
-                    <img
-                      src={player.picture_url}
-                      alt=""
-                      className="h-10 w-10 shrink-0 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-10 w-10 shrink-0 rounded-full border border-border" />
-                  )}
+                  <TeamLogo teamId={player.team_id} teamName={player.team_name} />
 
                   <div className="min-w-0">
                     <Link
