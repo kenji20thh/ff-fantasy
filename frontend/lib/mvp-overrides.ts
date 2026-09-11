@@ -19,6 +19,10 @@
 export const MVP_OVERRIDES: Record<string, number> = {
   "day:7": 40, // Week1 Day1  -> player 40
   "day:8": 88, // Week1 Day2  -> player 88
+  "day:5": 80, // Week2 Day1  -> player 80
+  "day:1": 77, // Week2 Day2  -> player 77
+  "day:3": 80, // Week3 Day1  -> player 80
+  "day:4": 27, // Week3 Day2  -> player 27
   "day:10": 27, // Week3 Day1 AxC -> player 27
   "week:league:3": 27, // Week 3 overall -> player 27
   "week:league:2": 80, // Week 2 overall -> player 80
