@@ -70,11 +70,15 @@ function PlayersContent() {
   const [phase, setPhase] = useState<Phase>(
     (searchParams.get("phase") as Phase) || "league",
   );
-  const [week, setWeek] = useState<number | null>(
-    searchParams.get("week") ? Number(searchParams.get("week")) : null,
+  const [week, setWeek] = useState<number | "all" | null>(
+    searchParams.get("week")
+      ? searchParams.get("week") === "all"
+        ? "all"
+        : Number(searchParams.get("week"))
+      : null,
   );
   const [dayId, setDayId] = useState<string>(searchParams.get("day") ?? "all");
-  const [sort, setSort] = useState<"points" | "kills">("kills");
+  const [sort, setSort] = useState<"points" | "kills">("points");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -129,6 +133,10 @@ function PlayersContent() {
   // Days in the currently selected scope (a week, or a whole non-league phase).
   const currentDays = useMemo(() => {
     if (phase === "league") {
+      if (week === "all") {
+        return [...grouped.league.values()].flat();
+      }
+
       return week !== null ? grouped.league.get(week) ?? [] : [];
     }
 
@@ -230,7 +238,7 @@ function PlayersContent() {
     setWeek(next === "league" ? [...grouped.league.keys()][0] ?? null : null);
   }
 
-  function handleWeekChange(w: number) {
+  function handleWeekChange(w: number | "all") {
     setWeek(w);
     setDayId("all");
   }
@@ -283,6 +291,18 @@ function PlayersContent() {
       {/* Week (League Phase only) */}
       {phase === "league" && weeks.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => handleWeekChange("all")}
+            className={`px-4 py-2 text-xs font-semibold border border-border transition ${
+              week === "all"
+                ? "bg-primary text-primary-foreground border-primary"
+                : "text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            Overall
+          </button>
+
           {weeks.map((w) => (
             <button
               key={w}
