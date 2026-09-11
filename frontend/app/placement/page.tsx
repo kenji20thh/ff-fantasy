@@ -8,6 +8,27 @@ import type { PlacementTeam, TournamentDay, Room } from "@/lib/types";
 
 type View = "overall" | "week" | "day" | "room";
 
+function weekNumber(weekLabel: string) {
+  const match = weekLabel.match(/(\d+)/);
+  return match ? Number(match[1]) : 0;
+}
+
+function dayNumberFromName(name: string) {
+  const match = name.match(/day\s*(\d+)/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function sortDaysByWeekDay(list: TournamentDay[]) {
+  return [...list].sort((a, b) => {
+    const weekA = weekNumber(a.name.split(" ")[0]);
+    const weekB = weekNumber(b.name.split(" ")[0]);
+
+    if (weekA !== weekB) return weekA - weekB;
+
+    return dayNumberFromName(a.name) - dayNumberFromName(b.name);
+  });
+}
+
 export default function PlacementPage() {
   const [view, setView] = useState<View>("overall");
 
@@ -26,7 +47,7 @@ export default function PlacementPage() {
     async function loadDays() {
       try {
         const data = await api.days();
-        const list = asArray<TournamentDay>(data);
+        const list = sortDaysByWeekDay(asArray<TournamentDay>(data));
 
         setDays(list);
 
@@ -112,21 +133,21 @@ export default function PlacementPage() {
       .map((day) => day.name.split(" ")[0])
       .filter(Boolean);
 
-    return [...new Set(values)];
+    return [...new Set(values)].sort((a, b) => weekNumber(a) - weekNumber(b));
   }, [days]);
 
   const filteredDays = useMemo(() => {
-    return days.filter(
-      (day) => day.name.split(" ")[0] === selectedWeek
-    );
+    return days
+      .filter((day) => day.name.split(" ")[0] === selectedWeek)
+      .sort((a, b) => dayNumberFromName(a.name) - dayNumberFromName(b.name));
   }, [days, selectedWeek]);
 
   function handleWeekChange(value: string) {
     setSelectedWeek(value);
 
-    const firstDay = days.find(
-      (day) => day.name.split(" ")[0] === value
-    );
+    const firstDay = days
+      .filter((day) => day.name.split(" ")[0] === value)
+      .sort((a, b) => dayNumberFromName(a.name) - dayNumberFromName(b.name))[0];
 
     setSelectedDay(firstDay?.id ?? null);
     setSelectedRoom(null);
