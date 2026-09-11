@@ -126,8 +126,8 @@ function MvpCard({
 
         <p className="text-sm text-muted-foreground">{player.team_name}</p>
 
-        <p className="mt-3 font-mono text-3xl font-bold">{player.points}</p>
-        <p className="text-xs text-muted-foreground">points</p>
+        <p className="mt-3 font-mono text-3xl font-bold">{player.kills}</p>
+        <p className="text-xs text-muted-foreground">kills</p>
       </div>
 
       <p className="mt-4 text-center text-xs text-muted-foreground">{label}</p>
@@ -152,7 +152,7 @@ function PlayersContent() {
       : null,
   );
   const [dayId, setDayId] = useState<string>(searchParams.get("day") ?? "all");
-  const [sort, setSort] = useState<"points" | "kills">("points");
+  const [sort, setSort] = useState<"points" | "kills">("kills");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
