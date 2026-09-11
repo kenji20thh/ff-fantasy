@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { useAuth } from '@/lib/auth'
 
 const links = [
+  ['/placement', 'Placement'],
   ['/teams', 'Teams'],
   ['/schedule', 'Schedule'],
   ['/players', 'Players'],
