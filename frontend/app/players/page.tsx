@@ -74,7 +74,7 @@ function PlayersContent() {
     searchParams.get("week") ? Number(searchParams.get("week")) : null,
   );
   const [dayId, setDayId] = useState<string>(searchParams.get("day") ?? "all");
-  const [sort, setSort] = useState<"points" | "kills">("points");
+  const [sort, setSort] = useState<"points" | "kills">("kills");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
