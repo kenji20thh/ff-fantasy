@@ -44,11 +44,19 @@ function dayNumber(d: TournamentDay) {
   return parseDayName(d.name).day ?? 0;
 }
 
-function TeamLogo({ teamId, teamName }: { teamId: number; teamName: string }) {
+function TeamLogo({
+  teamId,
+  teamName,
+  size = "h-10 w-10",
+}: {
+  teamId: number;
+  teamName: string;
+  size?: string;
+}) {
   const [failed, setFailed] = useState(false);
 
   if (failed) {
-    return <div className="h-10 w-10 shrink-0 rounded-full border border-border" />;
+    return <div className={`${size} shrink-0 rounded-full border border-border`} />;
   }
 
   return (
@@ -56,8 +64,73 @@ function TeamLogo({ teamId, teamName }: { teamId: number; teamName: string }) {
       src={`/logos/${teamId}.png`}
       alt={teamName}
       onError={() => setFailed(true)}
-      className="h-10 w-10 shrink-0 rounded-full border border-border bg-background object-contain p-1"
+      className={`${size} shrink-0 rounded-full border border-border bg-background object-contain p-1`}
     />
+  );
+}
+
+function PlayerPhoto({
+  playerId,
+  teamId,
+  teamName,
+  size = "h-28 w-28",
+}: {
+  playerId: number;
+  teamId: number;
+  teamName: string;
+  size?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return <TeamLogo teamId={teamId} teamName={teamName} size={size} />;
+  }
+
+  return (
+    <img
+      src={`/players/${playerId}.png`}
+      alt=""
+      onError={() => setFailed(true)}
+      className={`${size} rounded-full border border-border object-cover`}
+    />
+  );
+}
+
+function MvpCard({
+  player,
+  label,
+}: {
+  player: PlayerRanking | null;
+  label: string;
+}) {
+  if (!player) return null;
+
+  return (
+    <div className="border border-border bg-card p-6">
+      <p className="eyebrow">MVP</p>
+
+      <div className="mt-4 flex flex-col items-center text-center">
+        <PlayerPhoto
+          playerId={player.player_id}
+          teamId={player.team_id}
+          teamName={player.team_name}
+        />
+
+        <Link
+          href={`/players/${player.player_id}`}
+          className="mt-4 font-mono text-lg font-bold uppercase hover:text-primary"
+        >
+          {player.nickname}
+        </Link>
+
+        <p className="text-sm text-muted-foreground">{player.team_name}</p>
+
+        <p className="mt-3 font-mono text-3xl font-bold">{player.points}</p>
+        <p className="text-xs text-muted-foreground">points</p>
+      </div>
+
+      <p className="mt-4 text-center text-xs text-muted-foreground">{label}</p>
+    </div>
   );
 }
 
@@ -78,7 +151,7 @@ function PlayersContent() {
       : null,
   );
   const [dayId, setDayId] = useState<string>(searchParams.get("day") ?? "all");
-  const [sort, setSort] = useState<"points" | "kills">("kills");
+  const [sort, setSort] = useState<"points" | "kills">("points");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -245,6 +318,24 @@ function PlayersContent() {
 
   const weeks = [...grouped.league.keys()];
 
+  const mvp = useMemo(() => {
+    if (players.length === 0) return null;
+    return [...players].sort((a, b) => b.points - a.points)[0];
+  }, [players]);
+
+  const scopeLabel = useMemo(() => {
+    if (dayId !== "all") {
+      const d = currentDays.find((cd) => String(cd.id) === dayId);
+      return d ? d.name : "Selected day";
+    }
+
+    if (phase === "league" && week === "all") return "League Phase — Overall";
+    if (phase === "league" && week !== null) return `Week ${week} — All Days`;
+
+    const label = PHASES.find((p) => p.id === phase)?.label ?? "";
+    return `${label} — All Days`;
+  }, [phase, week, dayId, currentDays]);
+
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
       <Link href="/" className="eyebrow">
@@ -270,176 +361,184 @@ function PlayersContent() {
         </Link>
       </div>
 
-      {/* Phase */}
-      <div className="mt-10 flex flex-wrap gap-2">
-        {PHASES.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => handlePhaseChange(p.id)}
-            className={`px-5 py-3 text-sm font-semibold border border-border transition ${
-              phase === p.id
-                ? "bg-foreground text-background"
-                : "hover:bg-muted"
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Week (League Phase only) */}
-      {phase === "league" && weeks.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => handleWeekChange("all")}
-            className={`px-4 py-2 text-xs font-semibold border border-border transition ${
-              week === "all"
-                ? "bg-primary text-primary-foreground border-primary"
-                : "text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            Overall
-          </button>
-
-          {weeks.map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => handleWeekChange(w)}
-              className={`px-4 py-2 text-xs font-semibold border border-border transition ${
-                week === w
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              Week {w}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
-        {/* Day, within the current scope */}
-        <div className="flex flex-wrap gap-2 pl-4 border-l border-border">
-          <button
-            type="button"
-            onClick={() => setDayId("all")}
-            className={`px-4 py-2 text-xs font-semibold transition ${
-              dayId === "all"
-                ? "text-foreground underline underline-offset-4 decoration-primary"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            All Days
-          </button>
-
-          {currentDays.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              onClick={() => setDayId(String(d.id))}
-              className={`px-4 py-2 text-xs font-semibold transition ${
-                dayId === String(d.id)
-                  ? "text-foreground underline underline-offset-4 decoration-primary"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Day {dayNumber(d)}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex border border-border">
-          <button
-            type="button"
-            onClick={() => setSort("points")}
-            className={`px-5 py-3 text-sm font-semibold transition ${
-              sort === "points"
-                ? "bg-foreground text-background"
-                : "hover:bg-muted"
-            }`}
-          >
-            Points
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSort("kills")}
-            className={`px-5 py-3 text-sm font-semibold transition ${
-              sort === "kills"
-                ? "bg-foreground text-background"
-                : "hover:bg-muted"
-            }`}
-          >
-            Kills
-          </button>
-        </div>
-      </div>
-
-      {error && <p className="mt-8 text-muted-foreground">{error}</p>}
-
-      {loading ? (
-        <p className="mt-10 text-muted-foreground">Loading player rankings…</p>
-      ) : (
-        <div className="mt-10 border-y border-border">
-          <div className="grid grid-cols-[50px_1fr_auto] gap-4 border-b border-border px-4 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground md:grid-cols-[60px_1fr_180px_120px]">
-            <span>#</span>
-            <span>Player</span>
-            <span className="hidden md:block">Team</span>
-            <span className="text-right">
-              {sort === "points" ? "Points" : "Kills"}
-            </span>
+      <div className="mt-10 flex flex-col gap-8 lg:flex-row lg:items-start">
+        <div className="order-last min-w-0 flex-1 lg:order-first">
+          {/* Phase */}
+          <div className="flex flex-wrap gap-2">
+            {PHASES.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => handlePhaseChange(p.id)}
+                className={`px-5 py-3 text-sm font-semibold border border-border transition ${
+                  phase === p.id
+                    ? "bg-foreground text-background"
+                    : "hover:bg-muted"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
 
-          {currentDays.length === 0 ? (
-            <div className="px-4 py-10 text-center text-muted-foreground">
-              No days found for this phase yet.
-            </div>
-          ) : players.length === 0 ? (
-            <div className="px-4 py-10 text-center text-muted-foreground">
-              No player statistics available.
-            </div>
-          ) : (
-            players.map((player, index) => (
-              <div
-                key={player.player_id}
-                className="grid grid-cols-[50px_1fr_auto] items-center gap-4 border-b border-border px-4 py-5 last:border-b-0 md:grid-cols-[60px_1fr_180px_120px]"
+          {/* Week (League Phase only) */}
+          {phase === "league" && weeks.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => handleWeekChange("all")}
+                className={`px-4 py-2 text-xs font-semibold border border-border transition ${
+                  week === "all"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "text-muted-foreground hover:bg-muted"
+                }`}
               >
-                <span className="font-mono text-sm text-muted-foreground">
-                  {index + 1}
-                </span>
+                Overall
+              </button>
 
-                <div className="flex min-w-0 items-center gap-4">
-                  <TeamLogo teamId={player.team_id} teamName={player.team_name} />
+              {weeks.map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  onClick={() => handleWeekChange(w)}
+                  className={`px-4 py-2 text-xs font-semibold border border-border transition ${
+                    week === w
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Week {w}
+                </button>
+              ))}
+            </div>
+          )}
 
-                  <div className="min-w-0">
-                    <Link
-                      href={`/players/${player.player_id}`}
-                      className="truncate font-semibold hover:text-primary"
-                    >
-                      {player.nickname}
-                    </Link>
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+            {/* Day, within the current scope */}
+            <div className="flex flex-wrap gap-2 pl-4 border-l border-border">
+              <button
+                type="button"
+                onClick={() => setDayId("all")}
+                className={`px-4 py-2 text-xs font-semibold transition ${
+                  dayId === "all"
+                    ? "text-foreground underline underline-offset-4 decoration-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                All Days
+              </button>
 
-                    <p className="truncate text-sm text-muted-foreground md:hidden">
-                      {player.team_name}
-                    </p>
-                  </div>
-                </div>
+              {currentDays.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => setDayId(String(d.id))}
+                  className={`px-4 py-2 text-xs font-semibold transition ${
+                    dayId === String(d.id)
+                      ? "text-foreground underline underline-offset-4 decoration-primary"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Day {dayNumber(d)}
+                </button>
+              ))}
+            </div>
 
-                <span className="hidden truncate text-sm text-muted-foreground md:block">
-                  {player.team_name}
-                </span>
+            <div className="flex border border-border">
+              <button
+                type="button"
+                onClick={() => setSort("points")}
+                className={`px-5 py-3 text-sm font-semibold transition ${
+                  sort === "points"
+                    ? "bg-foreground text-background"
+                    : "hover:bg-muted"
+                }`}
+              >
+                Points
+              </button>
 
-                <span className="text-right font-mono text-lg font-bold">
-                  {sort === "points" ? player.points : player.kills}
+              <button
+                type="button"
+                onClick={() => setSort("kills")}
+                className={`px-5 py-3 text-sm font-semibold transition ${
+                  sort === "kills"
+                    ? "bg-foreground text-background"
+                    : "hover:bg-muted"
+                }`}
+              >
+                Kills
+              </button>
+            </div>
+          </div>
+
+          {error && <p className="mt-8 text-muted-foreground">{error}</p>}
+
+          {loading ? (
+            <p className="mt-10 text-muted-foreground">Loading player rankings…</p>
+          ) : (
+            <div className="mt-10 border-y border-border">
+              <div className="grid grid-cols-[50px_1fr_auto] gap-4 border-b border-border px-4 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground md:grid-cols-[60px_1fr_180px_120px]">
+                <span>#</span>
+                <span>Player</span>
+                <span className="hidden md:block">Team</span>
+                <span className="text-right">
+                  {sort === "points" ? "Points" : "Kills"}
                 </span>
               </div>
-            ))
+
+              {currentDays.length === 0 ? (
+                <div className="px-4 py-10 text-center text-muted-foreground">
+                  No days found for this phase yet.
+                </div>
+              ) : players.length === 0 ? (
+                <div className="px-4 py-10 text-center text-muted-foreground">
+                  No player statistics available.
+                </div>
+              ) : (
+                players.map((player, index) => (
+                  <div
+                    key={player.player_id}
+                    className="grid grid-cols-[50px_1fr_auto] items-center gap-4 border-b border-border px-4 py-5 last:border-b-0 md:grid-cols-[60px_1fr_180px_120px]"
+                  >
+                    <span className="font-mono text-sm text-muted-foreground">
+                      {index + 1}
+                    </span>
+
+                    <div className="flex min-w-0 items-center gap-4">
+                      <TeamLogo teamId={player.team_id} teamName={player.team_name} />
+
+                      <div className="min-w-0">
+                        <Link
+                          href={`/players/${player.player_id}`}
+                          className="truncate font-semibold hover:text-primary"
+                        >
+                          {player.nickname}
+                        </Link>
+
+                        <p className="truncate text-sm text-muted-foreground md:hidden">
+                          {player.team_name}
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className="hidden truncate text-sm text-muted-foreground md:block">
+                      {player.team_name}
+                    </span>
+
+                    <span className="text-right font-mono text-lg font-bold">
+                      {sort === "points" ? player.points : player.kills}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
           )}
         </div>
-      )}
+
+        <aside className="order-first lg:order-last lg:w-72 lg:shrink-0 lg:sticky lg:top-10">
+          <MvpCard player={mvp} label={scopeLabel} />
+        </aside>
+      </div>
     </main>
   );
 }
