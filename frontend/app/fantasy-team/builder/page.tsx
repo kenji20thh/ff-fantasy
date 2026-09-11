@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -30,6 +29,51 @@ type FantasyDaySelection = {
   player_ids: number[];
   captain_player_id?: number | null;
 };
+
+type Phase = "league" | "rush" | "final" | "unknown";
+
+const PHASE_ORDER: Record<Phase, number> = {
+  league: 0,
+  rush: 1,
+  final: 2,
+  unknown: 99,
+};
+
+function parseDayName(name: string): { phase: Phase; week?: number; day?: number } {
+  const league = name.match(/^week\s*(\d+)\s*day\s*(\d+)/i);
+  if (league) {
+    return { phase: "league", week: Number(league[1]), day: Number(league[2]) };
+  }
+
+  const rush = name.match(/^rush\s*day\s*(\d+)/i);
+  if (rush) {
+    return { phase: "rush", day: Number(rush[1]) };
+  }
+
+  const final = name.match(/^(grand\s*)?final\s*day\s*(\d+)/i);
+  if (final) {
+    return { phase: "final", day: Number(final[1]) };
+  }
+
+  return { phase: "unknown" };
+}
+
+function sortDaysByWeekDay(list: TournamentDay[]) {
+  return [...list].sort((a, b) => {
+    const pa = parseDayName(a.name);
+    const pb = parseDayName(b.name);
+
+    if (PHASE_ORDER[pa.phase] !== PHASE_ORDER[pb.phase]) {
+      return PHASE_ORDER[pa.phase] - PHASE_ORDER[pb.phase];
+    }
+
+    const weekA = pa.week ?? 0;
+    const weekB = pb.week ?? 0;
+    if (weekA !== weekB) return weekA - weekB;
+
+    return (pa.day ?? 0) - (pb.day ?? 0);
+  });
+}
 
 export default function FantasyTeamBuilder() {
   const router = useRouter();
@@ -163,8 +207,9 @@ export default function FantasyTeamBuilder() {
             api.teams(),
           ]);
 
-        const loadedDays =
-          asArray<TournamentDay>(daysResponse);
+        const loadedDays = sortDaysByWeekDay(
+          asArray<TournamentDay>(daysResponse),
+        );
 
         const loadedTeams =
           asArray<Team>(teamsResponse);
