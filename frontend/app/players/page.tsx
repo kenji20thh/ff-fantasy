@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 
 import { api } from "@/lib/api";
 import { asArray, errorMessage } from "@/lib/types";
+import { MVP_OVERRIDES } from "@/lib/mvp-overrides";
 
 import type { PlayerRanking, TournamentDay } from "@/lib/types";
 
@@ -318,10 +319,24 @@ function PlayersContent() {
 
   const weeks = [...grouped.league.keys()];
 
+  const scopeKey = useMemo(() => {
+    if (dayId !== "all") return `day:${dayId}`;
+    if (phase === "league" && week === "all") return "phase:league";
+    if (phase === "league" && week !== null) return `week:league:${week}`;
+    return `phase:${phase}`;
+  }, [phase, week, dayId]);
+
   const mvp = useMemo(() => {
+    const overrideId = MVP_OVERRIDES[scopeKey];
+
+    if (overrideId) {
+      const picked = players.find((p) => p.player_id === overrideId);
+      if (picked) return picked;
+    }
+
     if (players.length === 0) return null;
     return [...players].sort((a, b) => b.points - a.points)[0];
-  }, [players]);
+  }, [players, scopeKey]);
 
   const scopeLabel = useMemo(() => {
     if (dayId !== "all") {
