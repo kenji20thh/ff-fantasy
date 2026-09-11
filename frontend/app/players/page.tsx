@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -9,59 +9,216 @@ import { asArray, errorMessage } from "@/lib/types";
 
 import type { PlayerRanking, TournamentDay } from "@/lib/types";
 
+type Phase = "league" | "rush" | "final";
+
+const PHASES: { id: Phase; label: string }[] = [
+  { id: "league", label: "League Phase" },
+  { id: "rush", label: "Rush Point" },
+  { id: "final", label: "Grand Final" },
+];
+
+function parseDayName(name: string): {
+  phase: Phase | "unknown";
+  week?: number;
+  day?: number;
+} {
+  const league = name.match(/^week\s*(\d+)\s*day\s*(\d+)/i);
+  if (league) {
+    return { phase: "league", week: Number(league[1]), day: Number(league[2]) };
+  }
+
+  const rush = name.match(/^rush\s*day\s*(\d+)/i);
+  if (rush) {
+    return { phase: "rush", day: Number(rush[1]) };
+  }
+
+  const final = name.match(/^(grand\s*)?final\s*day\s*(\d+)/i);
+  if (final) {
+    return { phase: "final", day: Number(final[1]) };
+  }
+
+  return { phase: "unknown" };
+}
+
+function dayNumber(d: TournamentDay) {
+  return parseDayName(d.name).day ?? 0;
+}
+
 function PlayersContent() {
   const searchParams = useSearchParams();
 
   const [days, setDays] = useState<TournamentDay[]>([]);
   const [players, setPlayers] = useState<PlayerRanking[]>([]);
-  const [selectedDay, setSelectedDay] = useState(searchParams.get("day") ?? "");
+
+  const [phase, setPhase] = useState<Phase>(
+    (searchParams.get("phase") as Phase) || "league",
+  );
+  const [week, setWeek] = useState<number | null>(
+    searchParams.get("week") ? Number(searchParams.get("week")) : null,
+  );
+  const [dayId, setDayId] = useState<string>(searchParams.get("day") ?? "all");
   const [sort, setSort] = useState<"points" | "kills">("points");
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // Load all tournament days once.
   useEffect(() => {
     api
       .days()
-      .then((data) => {
-        setDays(asArray<TournamentDay>(data));
-      })
-      .catch((err) => {
-        setError(errorMessage(err));
-      });
+      .then((data) => setDays(asArray<TournamentDay>(data)))
+      .catch((err) => setError(errorMessage(err)));
   }, []);
 
+  // Group days by phase, and by week within League Phase.
+  const grouped = useMemo(() => {
+    const league = new Map<number, TournamentDay[]>();
+    const rush: TournamentDay[] = [];
+    const final: TournamentDay[] = [];
+
+    for (const d of days) {
+      const parsed = parseDayName(d.name);
+
+      if (parsed.phase === "league" && parsed.week) {
+        const list = league.get(parsed.week) ?? [];
+        list.push(d);
+        league.set(parsed.week, list);
+      } else if (parsed.phase === "rush") {
+        rush.push(d);
+      } else if (parsed.phase === "final") {
+        final.push(d);
+      }
+    }
+
+    const byDayNumber = (list: TournamentDay[]) =>
+      [...list].sort((a, b) => dayNumber(a) - dayNumber(b));
+
+    const leagueSorted = new Map(
+      [...league.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([w, list]) => [w, byDayNumber(list)] as const),
+    );
+
+    return { league: leagueSorted, rush: byDayNumber(rush), final: byDayNumber(final) };
+  }, [days]);
+
+  // Default to the first available week once League Phase data loads.
   useEffect(() => {
-    setLoading(true);
-    setError("");
+    if (phase === "league" && week === null && grouped.league.size > 0) {
+      setWeek([...grouped.league.keys()][0]);
+    }
+  }, [phase, week, grouped]);
 
-    const dayId = selectedDay ? Number(selectedDay) : undefined;
+  // Days in the currently selected scope (a week, or a whole non-league phase).
+  const currentDays = useMemo(() => {
+    if (phase === "league") {
+      return week !== null ? grouped.league.get(week) ?? [] : [];
+    }
 
-    api
-      .playerRankings(dayId, sort)
-      .then((data) => {
-        setPlayers(asArray<PlayerRanking>(data));
-      })
-      .catch((err) => {
-        setError(errorMessage(err));
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [selectedDay, sort]);
+    return phase === "rush" ? grouped.rush : grouped.final;
+  }, [phase, week, grouped]);
 
-  function handleDayChange(value: string) {
-    setSelectedDay(value);
-
+  // Keep the URL shareable.
+  useEffect(() => {
     const url = new URL(window.location.href);
+    url.searchParams.set("phase", phase);
 
-    if (value) {
-      url.searchParams.set("day", value);
+    if (phase === "league" && week !== null) {
+      url.searchParams.set("week", String(week));
+    } else {
+      url.searchParams.delete("week");
+    }
+
+    if (dayId !== "all") {
+      url.searchParams.set("day", dayId);
     } else {
       url.searchParams.delete("day");
     }
 
     window.history.replaceState({}, "", url);
+  }, [phase, week, dayId]);
+
+  // Fetch rankings for the current selection. "All Days" within a scope of
+  // more than one day is aggregated client-side, since /api/player-rankings
+  // only accepts a single day_id.
+  useEffect(() => {
+    if (currentDays.length === 0) {
+      setPlayers([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+
+    async function run() {
+      try {
+        if (dayId !== "all") {
+          const data = await api.playerRankings(Number(dayId), sort);
+          if (!cancelled) setPlayers(asArray<PlayerRanking>(data));
+          return;
+        }
+
+        if (currentDays.length === 1) {
+          const data = await api.playerRankings(currentDays[0].id, sort);
+          if (!cancelled) setPlayers(asArray<PlayerRanking>(data));
+          return;
+        }
+
+        const results = await Promise.all(
+          currentDays.map((d) =>
+            api
+              .playerRankings(d.id, sort)
+              .then((data) => asArray<PlayerRanking>(data)),
+          ),
+        );
+
+        const merged = new Map<number, PlayerRanking>();
+
+        for (const list of results) {
+          for (const p of list) {
+            const existing = merged.get(p.player_id);
+
+            if (existing) {
+              existing.points += p.points;
+              existing.kills += p.kills;
+            } else {
+              merged.set(p.player_id, { ...p });
+            }
+          }
+        }
+
+        const combined = [...merged.values()].sort((a, b) =>
+          sort === "points" ? b.points - a.points : b.kills - a.kills,
+        );
+
+        if (!cancelled) setPlayers(combined);
+      } catch (err) {
+        if (!cancelled) setError(errorMessage(err));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentDays, dayId, sort]);
+
+  function handlePhaseChange(next: Phase) {
+    setPhase(next);
+    setDayId("all");
+    setWeek(next === "league" ? [...grouped.league.keys()][0] ?? null : null);
   }
+
+  function handleWeekChange(w: number) {
+    setWeek(w);
+    setDayId("all");
+  }
+
+  const weeks = [...grouped.league.keys()];
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
@@ -88,20 +245,74 @@ function PlayersContent() {
         </Link>
       </div>
 
-      <div className="mt-10 flex flex-wrap items-center gap-4">
-        <select
-          value={selectedDay}
-          onChange={(event) => handleDayChange(event.target.value)}
-          className="border border-border bg-background px-4 py-3 text-sm font-medium outline-none focus:border-primary"
-        >
-          <option value="">All Days</option>
+      {/* Phase */}
+      <div className="mt-10 flex flex-wrap gap-2">
+        {PHASES.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => handlePhaseChange(p.id)}
+            className={`px-5 py-3 text-sm font-semibold border border-border transition ${
+              phase === p.id
+                ? "bg-foreground text-background"
+                : "hover:bg-muted"
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
 
-          {days.map((day) => (
-            <option key={day.id} value={day.id}>
-              {day.name}
-            </option>
+      {/* Week (League Phase only) */}
+      {phase === "league" && weeks.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {weeks.map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => handleWeekChange(w)}
+              className={`px-4 py-2 text-xs font-semibold border border-border transition ${
+                week === w
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              Week {w}
+            </button>
           ))}
-        </select>
+        </div>
+      )}
+
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+        {/* Day, within the current scope */}
+        <div className="flex flex-wrap gap-2 pl-4 border-l border-border">
+          <button
+            type="button"
+            onClick={() => setDayId("all")}
+            className={`px-4 py-2 text-xs font-semibold transition ${
+              dayId === "all"
+                ? "text-foreground underline underline-offset-4 decoration-primary"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            All Days
+          </button>
+
+          {currentDays.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => setDayId(String(d.id))}
+              className={`px-4 py-2 text-xs font-semibold transition ${
+                dayId === String(d.id)
+                  ? "text-foreground underline underline-offset-4 decoration-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Day {dayNumber(d)}
+            </button>
+          ))}
+        </div>
 
         <div className="flex border border-border">
           <button
@@ -145,7 +356,11 @@ function PlayersContent() {
             </span>
           </div>
 
-          {players.length === 0 ? (
+          {currentDays.length === 0 ? (
+            <div className="px-4 py-10 text-center text-muted-foreground">
+              No days found for this phase yet.
+            </div>
+          ) : players.length === 0 ? (
             <div className="px-4 py-10 text-center text-muted-foreground">
               No player statistics available.
             </div>
