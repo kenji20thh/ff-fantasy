@@ -1,12 +1,40 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 
 import { api } from '@/lib/api'
 import { asArray, dateLabel, errorMessage } from '@/lib/types'
 
 import type { TournamentDay } from '@/lib/types'
+
+type Phase = 'league' | 'rush' | 'final' | 'unknown'
+
+const PHASE_ORDER: Record<Phase, number> = {
+  league: 0,
+  rush: 1,
+  final: 2,
+  unknown: 99,
+}
+
+function parseDayName(name: string): { phase: Phase; week?: number; day?: number } {
+  const league = name.match(/^week\s*(\d+)\s*day\s*(\d+)/i)
+  if (league) {
+    return { phase: 'league', week: Number(league[1]), day: Number(league[2]) }
+  }
+
+  const rush = name.match(/^rush\s*day\s*(\d+)/i)
+  if (rush) {
+    return { phase: 'rush', day: Number(rush[1]) }
+  }
+
+  const final = name.match(/^(grand\s*)?final\s*day\s*(\d+)/i)
+  if (final) {
+    return { phase: 'final', day: Number(final[1]) }
+  }
+
+  return { phase: 'unknown' }
+}
 
 export default function Schedule() {
   const [days, setDays] = useState<TournamentDay[]>([])
@@ -22,6 +50,25 @@ export default function Schedule() {
         setError(errorMessage(err))
       })
   }, [])
+
+  const sortedDays = useMemo(() => {
+    return [...days].sort((a, b) => {
+      const pa = parseDayName(a.name)
+      const pb = parseDayName(b.name)
+
+      if (PHASE_ORDER[pa.phase] !== PHASE_ORDER[pb.phase]) {
+        return PHASE_ORDER[pa.phase] - PHASE_ORDER[pb.phase]
+      }
+
+      const weekA = pa.week ?? 0
+      const weekB = pb.week ?? 0
+      if (weekA !== weekB) return weekA - weekB
+
+      const dayA = pa.day ?? 0
+      const dayB = pb.day ?? 0
+      return dayA - dayB
+    })
+  }, [days])
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
@@ -44,7 +91,7 @@ export default function Schedule() {
       )}
 
       <div className="mt-10 divide-y divide-border border-y border-border">
-        {days.map(day => (
+        {sortedDays.map(day => (
           <div
             key={day.id}
             className="flex flex-wrap items-center justify-between gap-4 py-6"
