@@ -328,7 +328,7 @@ export default function PlacementPage() {
                         <img
                           src="/booyah.png"
                           alt="Booyah"
-                          className="h-5 w-5 object-contain"
+                          className="h-10 w-10 object-contain"
                         />
                         <span>x{team.booyahs}</span>
                       </>
