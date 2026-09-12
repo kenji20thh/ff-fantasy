@@ -129,9 +129,7 @@ export default function PlacementPage() {
   }, [view, selectedWeek, selectedDay, selectedRoom]);
 
   const weeks = useMemo(() => {
-    const values = days
-      .map((day) => day.name.split(" ")[0])
-      .filter(Boolean);
+    const values = days.map((day) => day.name.split(" ")[0]).filter(Boolean);
 
     return [...new Set(values)].sort((a, b) => weekNumber(a) - weekNumber(b));
   }, [days]);
@@ -164,8 +162,7 @@ export default function PlacementPage() {
     setSelectedRoom(Number(value));
   }
 
-  const gridCols =
-    "grid-cols-[60px_1fr_120px_100px_120px_100px_100px]";
+  const gridCols = "grid-cols-[60px_1fr_120px_100px_120px_100px_100px]";
 
   return (
     <main className="min-h-screen bg-black px-4 py-8 text-white md:px-8">
@@ -174,38 +171,32 @@ export default function PlacementPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Placement</h1>
 
-          <p className="mt-2 text-sm text-zinc-400">
-            Tournament standings
-          </p>
+          <p className="mt-2 text-sm text-zinc-400">Tournament standings</p>
         </div>
 
         {/* View buttons */}
         <div className="mb-6 flex flex-wrap gap-2">
-          {(["overall", "week", "day", "room"] as View[]).map(
-            (item) => (
-              <button
-                key={item}
-                onClick={() => setView(item)}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                  view === item
-                    ? "bg-white text-black"
-                    : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
-                }`}
-              >
-                {item === "overall"
-                  ? "Overall"
-                  : item.charAt(0).toUpperCase() + item.slice(1)}
-              </button>
-            )
-          )}
+          {(["overall", "week", "day", "room"] as View[]).map((item) => (
+            <button
+              key={item}
+              onClick={() => setView(item)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                view === item
+                  ? "bg-white text-black"
+                  : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+              }`}
+            >
+              {item === "overall"
+                ? "Overall"
+                : item.charAt(0).toUpperCase() + item.slice(1)}
+            </button>
+          ))}
         </div>
 
         {/* Week selector */}
         {view === "week" && (
           <div className="mb-6">
-            <label className="mb-2 block text-sm text-zinc-400">
-              Week
-            </label>
+            <label className="mb-2 block text-sm text-zinc-400">Week</label>
 
             <select
               value={selectedWeek}
@@ -224,9 +215,7 @@ export default function PlacementPage() {
         {/* Day selector */}
         {(view === "day" || view === "room") && (
           <div className="mb-6">
-            <label className="mb-2 block text-sm text-zinc-400">
-              Day
-            </label>
+            <label className="mb-2 block text-sm text-zinc-400">Day</label>
 
             <select
               value={selectedDay ?? ""}
@@ -245,9 +234,7 @@ export default function PlacementPage() {
         {/* Room selector */}
         {view === "room" && (
           <div className="mb-6">
-            <label className="mb-2 block text-sm text-zinc-400">
-              Room
-            </label>
+            <label className="mb-2 block text-sm text-zinc-400">Room</label>
 
             <select
               value={selectedRoom ?? ""}
@@ -298,9 +285,7 @@ export default function PlacementPage() {
 
             {/* Loading */}
             {loading ? (
-              <div className="p-8 text-center text-zinc-500">
-                Loading...
-              </div>
+              <div className="p-8 text-center text-zinc-500">Loading...</div>
             ) : placement.length === 0 ? (
               <div className="p-8 text-center text-zinc-500">
                 No placement data available.
@@ -312,9 +297,7 @@ export default function PlacementPage() {
                   className={`grid ${gridCols} items-center gap-4 border-b border-zinc-900 px-5 py-4 text-sm last:border-b-0`}
                 >
                   {/* Rank */}
-                  <div className="font-bold text-zinc-400">
-                    {index + 1}
-                  </div>
+                  <div className="font-bold text-zinc-400">{index + 1}</div>
 
                   {/* Team + Logo */}
                   <div className="flex items-center gap-3 font-semibold">
@@ -330,9 +313,7 @@ export default function PlacementPage() {
                   </div>
 
                   {/* Total Points */}
-                  <div className="font-bold">
-                    {team.points}
-                  </div>
+                  <div className="font-bold">{team.points}</div>
 
                   {/* Kills */}
                   <div>{team.kills}</div>
@@ -341,14 +322,24 @@ export default function PlacementPage() {
                   <div>{team.placement_points}</div>
 
                   {/* Booyahs */}
-                  <div>
-                    {team.booyahs > 0 ? `🏆 x${team.booyahs}` : "—"}
+                  {/* Booyahs */}
+                  <div className="flex items-center gap-1.5">
+                    {team.booyahs > 0 ? (
+                      <>
+                        <img
+                          src="/booyah.png"
+                          alt="Booyah"
+                          className="h-4 w-4"
+                        />
+                        <span>x{team.booyahs}</span>
+                      </>
+                    ) : (
+                      "—"
+                    )}
                   </div>
 
                   {/* Rooms */}
-                  <div className="text-zinc-400">
-                    {team.rooms_played}
-                  </div>
+                  <div className="text-zinc-400">{team.rooms_played}</div>
                 </div>
               ))
             )}
