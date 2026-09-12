@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 
@@ -11,6 +11,51 @@ import type {
   PlayerDayStats,
   PlayerRoomStat,
 } from '@/lib/types'
+
+type Phase = 'league' | 'rush' | 'final' | 'unknown'
+
+const PHASE_ORDER: Record<Phase, number> = {
+  league: 0,
+  rush: 1,
+  final: 2,
+  unknown: 99,
+}
+
+function parseDayName(name: string): { phase: Phase; week?: number; day?: number } {
+  const league = name.match(/^week\s*(\d+)\s*day\s*(\d+)/i)
+  if (league) {
+    return { phase: 'league', week: Number(league[1]), day: Number(league[2]) }
+  }
+
+  const rush = name.match(/^rush\s*day\s*(\d+)/i)
+  if (rush) {
+    return { phase: 'rush', day: Number(rush[1]) }
+  }
+
+  const final = name.match(/^(grand\s*)?final\s*day\s*(\d+)/i)
+  if (final) {
+    return { phase: 'final', day: Number(final[1]) }
+  }
+
+  return { phase: 'unknown' }
+}
+
+function sortDaysByWeekDay(list: PlayerDayStats[]) {
+  return [...list].sort((a, b) => {
+    const pa = parseDayName(a.name)
+    const pb = parseDayName(b.name)
+
+    if (PHASE_ORDER[pa.phase] !== PHASE_ORDER[pb.phase]) {
+      return PHASE_ORDER[pa.phase] - PHASE_ORDER[pb.phase]
+    }
+
+    const weekA = pa.week ?? 0
+    const weekB = pb.week ?? 0
+    if (weekA !== weekB) return weekA - weekB
+
+    return (pa.day ?? 0) - (pb.day ?? 0)
+  })
+}
 
 export default function PlayerProfile() {
   const { id } = useParams<{ id: string }>()
@@ -34,6 +79,10 @@ export default function PlayerProfile() {
         setError(errorMessage(error))
       })
   }, [id])
+
+  const sortedDays = useMemo(() => {
+    return data ? sortDaysByWeekDay(data.days) : []
+  }, [data])
 
   if (error) {
     return (
@@ -59,7 +108,7 @@ export default function PlayerProfile() {
     )
   }
 
-  const { player, days, total } = data
+  const { player, total } = data
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-5 py-10">
@@ -98,12 +147,12 @@ export default function PlayerProfile() {
         </h2>
 
         <div className="mt-6 space-y-10">
-          {days.map(day => (
+          {sortedDays.map(day => (
             <DaySection key={day.id} day={day} />
           ))}
         </div>
 
-        {!days.length && (
+        {!sortedDays.length && (
           <p className="mt-6 text-muted-foreground">
             No statistics available yet.
           </p>
@@ -196,4 +245,3 @@ function StatCard({
     </div>
   )
 }
-
