@@ -45,6 +45,23 @@ function dayNumber(d: TournamentDay) {
   return parseDayName(d.name).day ?? 0;
 }
 
+function PlayerRowSkeleton() {
+  return (
+    <div className="grid grid-cols-[50px_1fr_auto] items-center gap-4 border-b border-border px-4 py-5 last:border-b-0 md:grid-cols-[60px_1fr_180px_120px]">
+      <div className="h-4 w-5 animate-pulse rounded bg-border/60" />
+
+      <div className="flex min-w-0 items-center gap-4">
+        <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-border/60" />
+        <div className="h-4 w-32 animate-pulse rounded bg-border/60" />
+      </div>
+
+      <div className="hidden h-4 w-24 animate-pulse rounded bg-border/60 md:block" />
+
+      <div className="ml-auto h-5 w-10 animate-pulse rounded bg-border/60" />
+    </div>
+  );
+}
+
 function TeamLogo({
   teamId,
   teamName,
@@ -152,7 +169,7 @@ function PlayersContent() {
       : null,
   );
   const [dayId, setDayId] = useState<string>(searchParams.get("day") ?? "all");
-  const [sort, setSort] = useState<"points" | "kills">("kills");
+  const [sort, setSort] = useState<"points" | "kills">("points");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -488,66 +505,68 @@ function PlayersContent() {
 
           {error && <p className="mt-8 text-muted-foreground">{error}</p>}
 
-          {loading ? (
-            <p className="mt-10 text-muted-foreground">Loading player rankings…</p>
-          ) : (
-            <div className="mt-10 border-y border-border">
-              <div className="grid grid-cols-[50px_1fr_auto] gap-4 border-b border-border px-4 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground md:grid-cols-[60px_1fr_180px_120px]">
-                <span>#</span>
-                <span>Player</span>
-                <span className="hidden md:block">Team</span>
-                <span className="text-right">
-                  {sort === "points" ? "Points" : "Kills"}
-                </span>
-              </div>
-
-              {currentDays.length === 0 ? (
-                <div className="px-4 py-10 text-center text-muted-foreground">
-                  No days found for this phase yet.
-                </div>
-              ) : players.length === 0 ? (
-                <div className="px-4 py-10 text-center text-muted-foreground">
-                  No player statistics available.
-                </div>
-              ) : (
-                players.map((player, index) => (
-                  <div
-                    key={player.player_id}
-                    className="grid grid-cols-[50px_1fr_auto] items-center gap-4 border-b border-border px-4 py-5 last:border-b-0 md:grid-cols-[60px_1fr_180px_120px]"
-                  >
-                    <span className="font-mono text-sm text-muted-foreground">
-                      {index + 1}
-                    </span>
-
-                    <div className="flex min-w-0 items-center gap-4">
-                      <TeamLogo teamId={player.team_id} teamName={player.team_name} />
-
-                      <div className="min-w-0">
-                        <Link
-                          href={`/players/${player.player_id}`}
-                          className="truncate font-semibold hover:text-primary"
-                        >
-                          {player.nickname}
-                        </Link>
-
-                        <p className="truncate text-sm text-muted-foreground md:hidden">
-                          {player.team_name}
-                        </p>
-                      </div>
-                    </div>
-
-                    <span className="hidden truncate text-sm text-muted-foreground md:block">
-                      {player.team_name}
-                    </span>
-
-                    <span className="text-right font-mono text-lg font-bold">
-                      {sort === "points" ? player.points : player.kills}
-                    </span>
-                  </div>
-                ))
-              )}
+          <div className="mt-10 border-y border-border">
+            <div className="grid grid-cols-[50px_1fr_auto] gap-4 border-b border-border px-4 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground md:grid-cols-[60px_1fr_180px_120px]">
+              <span>#</span>
+              <span>Player</span>
+              <span className="hidden md:block">Team</span>
+              <span className="text-right">
+                {sort === "points" ? "Points" : "Kills"}
+              </span>
             </div>
-          )}
+
+            {loading ? (
+              <>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <PlayerRowSkeleton key={i} />
+                ))}
+              </>
+            ) : currentDays.length === 0 ? (
+              <div className="px-4 py-10 text-center text-muted-foreground">
+                No days found for this phase yet.
+              </div>
+            ) : players.length === 0 ? (
+              <div className="px-4 py-10 text-center text-muted-foreground">
+                No player statistics available.
+              </div>
+            ) : (
+              players.map((player, index) => (
+                <div
+                  key={player.player_id}
+                  className="grid grid-cols-[50px_1fr_auto] items-center gap-4 border-b border-border px-4 py-5 last:border-b-0 md:grid-cols-[60px_1fr_180px_120px]"
+                >
+                  <span className="font-mono text-sm text-muted-foreground">
+                    {index + 1}
+                  </span>
+
+                  <div className="flex min-w-0 items-center gap-4">
+                    <TeamLogo teamId={player.team_id} teamName={player.team_name} />
+
+                    <div className="min-w-0">
+                      <Link
+                        href={`/players/${player.player_id}`}
+                        className="truncate font-semibold hover:text-primary"
+                      >
+                        {player.nickname}
+                      </Link>
+
+                      <p className="truncate text-sm text-muted-foreground md:hidden">
+                        {player.team_name}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="hidden truncate text-sm text-muted-foreground md:block">
+                    {player.team_name}
+                  </span>
+
+                  <span className="text-right font-mono text-lg font-bold">
+                    {sort === "points" ? player.points : player.kills}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
         <aside className="order-first lg:order-last lg:w-72 lg:shrink-0 lg:sticky lg:top-10">
