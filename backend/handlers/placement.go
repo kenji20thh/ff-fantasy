@@ -20,6 +20,7 @@ type PlacementTeam struct {
 	Kills           int    `json:"kills"`
 	Points          int    `json:"points"`
 	RoomsPlayed     int    `json:"rooms_played"`
+	Booyahs         int    `json:"booyahs"`
 }
 
 func (h *PlacementHandler) GetPlacement(w http.ResponseWriter, r *http.Request) {
@@ -93,6 +94,7 @@ func (h *PlacementHandler) GetPlacement(w http.ResponseWriter, r *http.Request) 
 			&team.Kills,
 			&team.Points,
 			&team.RoomsPlayed,
+			&team.Booyahs,
 		)
 		if err != nil {
 			http.Error(w, "Failed to read placement", http.StatusInternalServerError)
@@ -149,7 +151,9 @@ SELECT
 		+ COALESCE(SUM(prs.kills), 0)
 	)::int AS points,
 
-	1 AS rooms_played
+	1 AS rooms_played,
+
+	CASE WHEN MIN(prs.placement) = 1 THEN 1 ELSE 0 END AS booyahs
 
 FROM player_room_stats prs
 JOIN players p
@@ -185,7 +189,9 @@ WITH team_room_stats AS (
 			ELSE 0
 		END AS placement_points,
 
-		COALESCE(SUM(prs.kills), 0)::int AS kills
+		COALESCE(SUM(prs.kills), 0)::int AS kills,
+
+		CASE WHEN MIN(prs.placement) = 1 THEN 1 ELSE 0 END AS booyah
 
 	FROM player_room_stats prs
 
@@ -212,7 +218,8 @@ SELECT
 	SUM(placement_points)::int AS placement_points,
 	SUM(kills)::int AS kills,
 	SUM(placement_points + kills)::int AS points,
-	COUNT(*)::int AS rooms_played
+	COUNT(*)::int AS rooms_played,
+	SUM(booyah)::int AS booyahs
 
 FROM team_room_stats
 
@@ -242,7 +249,9 @@ WITH team_room_stats AS (
 			ELSE 0
 		END AS placement_points,
 
-		COALESCE(SUM(prs.kills), 0)::int AS kills
+		COALESCE(SUM(prs.kills), 0)::int AS kills,
+
+		CASE WHEN MIN(prs.placement) = 1 THEN 1 ELSE 0 END AS booyah
 
 	FROM player_room_stats prs
 
@@ -272,7 +281,8 @@ SELECT
 	SUM(placement_points)::int AS placement_points,
 	SUM(kills)::int AS kills,
 	SUM(placement_points + kills)::int AS points,
-	COUNT(*)::int AS rooms_played
+	COUNT(*)::int AS rooms_played,
+	SUM(booyah)::int AS booyahs
 
 FROM team_room_stats
 
@@ -302,7 +312,9 @@ WITH team_room_stats AS (
 			ELSE 0
 		END AS placement_points,
 
-		COALESCE(SUM(prs.kills), 0)::int AS kills
+		COALESCE(SUM(prs.kills), 0)::int AS kills,
+
+		CASE WHEN MIN(prs.placement) = 1 THEN 1 ELSE 0 END AS booyah
 
 	FROM player_room_stats prs
 
@@ -324,7 +336,8 @@ SELECT
 	SUM(placement_points)::int AS placement_points,
 	SUM(kills)::int AS kills,
 	SUM(placement_points + kills)::int AS points,
-	COUNT(*)::int AS rooms_played
+	COUNT(*)::int AS rooms_played,
+	SUM(booyah)::int AS booyahs
 
 FROM team_room_stats
 

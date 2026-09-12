@@ -167,4 +167,5 @@ export type PlacementTeam = {
   kills: number
   points: number
   rooms_played: number
+  booyahs: number
 }

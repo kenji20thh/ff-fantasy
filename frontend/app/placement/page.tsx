@@ -164,6 +164,9 @@ export default function PlacementPage() {
     setSelectedRoom(Number(value));
   }
 
+  const gridCols =
+    "grid-cols-[60px_1fr_120px_100px_120px_100px_100px]";
+
   return (
     <main className="min-h-screen bg-black px-4 py-8 text-white md:px-8">
       <div className="mx-auto max-w-6xl">
@@ -273,9 +276,11 @@ export default function PlacementPage() {
 
         {/* Placement table */}
         <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950">
-          <div className="min-w-[750px]">
+          <div className="min-w-[850px]">
             {/* Table header */}
-            <div className="grid grid-cols-[60px_1fr_120px_100px_120px_100px] gap-4 border-b border-zinc-800 bg-zinc-900 px-5 py-4 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            <div
+              className={`grid ${gridCols} gap-4 border-b border-zinc-800 bg-zinc-900 px-5 py-4 text-xs font-semibold uppercase tracking-wide text-zinc-400`}
+            >
               <div>#</div>
 
               <div>Team</div>
@@ -285,6 +290,8 @@ export default function PlacementPage() {
               <div>Kills</div>
 
               <div>Placement</div>
+
+              <div>Booyahs</div>
 
               <div>Rooms</div>
             </div>
@@ -302,7 +309,7 @@ export default function PlacementPage() {
               placement.map((team, index) => (
                 <div
                   key={team.team_id}
-                  className="grid grid-cols-[60px_1fr_120px_100px_120px_100px] items-center gap-4 border-b border-zinc-900 px-5 py-4 text-sm last:border-b-0"
+                  className={`grid ${gridCols} items-center gap-4 border-b border-zinc-900 px-5 py-4 text-sm last:border-b-0`}
                 >
                   {/* Rank */}
                   <div className="font-bold text-zinc-400">
@@ -332,6 +339,11 @@ export default function PlacementPage() {
 
                   {/* Placement Points */}
                   <div>{team.placement_points}</div>
+
+                  {/* Booyahs */}
+                  <div>
+                    {team.booyahs > 0 ? `🏆 x${team.booyahs}` : "—"}
+                  </div>
 
                   {/* Rooms */}
                   <div className="text-zinc-400">
