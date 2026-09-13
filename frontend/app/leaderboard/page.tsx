@@ -6,22 +6,27 @@ import { api } from '@/lib/api'
 import { asArray, errorMessage } from '@/lib/types'
 import type { LeaderboardEntry, TournamentDay } from '@/lib/types'
 
+type CurrentUser = {
+  id?: number
+  user_id?: number
+  username?: string
+}
+
 export default function Leaderboard() {
   const [rows, setRows] = useState<LeaderboardEntry[]>([])
   const [days, setDays] = useState<TournamentDay[]>([])
   const [selectedDay, setSelectedDay] = useState('')
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null)
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [state, setState] = useState('Loading leaderboard…')
 
   useEffect(() => {
-    // Get the logged-in user's ID
-    const storedUserId =
-      localStorage.getItem('user_id') ||
-      localStorage.getItem('userId')
-
-    if (storedUserId) {
-      setCurrentUserId(Number(storedUserId))
-    }
+    api.me()
+      .then((data) => {
+        setCurrentUser(data as CurrentUser)
+      })
+      .catch(() => {
+        setCurrentUser(null)
+      })
 
     api.days()
       .then((data) => {
@@ -50,7 +55,10 @@ export default function Leaderboard() {
       })
   }, [selectedDay])
 
-  const currentUser = rows.find(
+  const currentUserId =
+    currentUser?.id ?? currentUser?.user_id
+
+  const currentUserRow = rows.find(
     (row) => Number(row.user_id) === Number(currentUserId)
   )
 
@@ -102,24 +110,24 @@ export default function Leaderboard() {
         </p>
       )}
 
-      {/* CURRENT USER RANKING */}
-      {currentUser && (
+      {/* YOUR RANKING */}
+      {currentUserRow && (
         <div className="mt-8 border border-primary bg-primary/5 px-5 py-5">
           <p className="eyebrow">
             Your ranking
           </p>
 
           <div className="mt-3 grid grid-cols-[56px_1fr_100px] items-center gap-4">
-            <span className="font-mono text-primary">
-              #{currentUser.rank}
+            <span className="font-mono font-bold text-primary">
+              #{currentUserRow.rank || rows.indexOf(currentUserRow) + 1}
             </span>
 
-            <strong className="font-mono uppercase">
-              {currentUser.username || 'Player'}
+            <strong className="font-mono uppercase text-primary">
+              {currentUserRow.username || 'Player'}
             </strong>
 
-            <span className="text-right font-mono">
-              {currentUser.points ?? 0}{' '}
+            <span className="text-right font-mono font-bold">
+              {currentUserRow.points ?? 0}{' '}
               <small className="text-muted-foreground">
                 PTS
               </small>
