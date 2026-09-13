@@ -324,7 +324,7 @@ func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	userID, exists := h.Sessions.GetUserID(cookie.Value)
+	_, exists := h.Sessions.GetUserID(cookie.Value)
 	if !exists {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -353,11 +353,6 @@ func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Reque
 		}
 
 		http.Error(w, "Failed to get fantasy team", http.StatusInternalServerError)
-		return
-	}
-
-	if fantasyTeam.UserID != userID {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
