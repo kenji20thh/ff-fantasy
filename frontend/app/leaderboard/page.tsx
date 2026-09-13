@@ -7,9 +7,10 @@ import { asArray, errorMessage } from '@/lib/types'
 import type { LeaderboardEntry, TournamentDay } from '@/lib/types'
 
 type CurrentUser = {
-  id?: number
-  user_id?: number
-  username?: string
+  id: number
+  username: string
+  email: string
+  role: string
 }
 
 export default function Leaderboard() {
@@ -55,12 +56,19 @@ export default function Leaderboard() {
       })
   }, [selectedDay])
 
-  const currentUserId =
-    currentUser?.id ?? currentUser?.user_id
-
-  const currentUserRow = rows.find(
-    (row) => Number(row.user_id) === Number(currentUserId)
-  )
+  /*
+   * Find the logged-in user's row.
+   *
+   * We compare both user_id and username so this still works
+   * even if the backend represents the ID slightly differently.
+   */
+  const currentUserRow = currentUser
+    ? rows.find(
+        (row) =>
+          Number(row.user_id) === Number(currentUser.id) ||
+          row.username === currentUser.username
+      )
+    : null
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-5 py-10">
@@ -123,7 +131,7 @@ export default function Leaderboard() {
             </span>
 
             <strong className="font-mono uppercase text-primary">
-              {currentUserRow.username || 'Player'}
+              {currentUserRow.username}
             </strong>
 
             <span className="text-right font-mono font-bold">
@@ -142,7 +150,11 @@ export default function Leaderboard() {
           const teamId = row.fantasy_team_id
 
           const isCurrentUser =
-            Number(row.user_id) === Number(currentUserId)
+            currentUser !== null &&
+            (
+              Number(row.user_id) === Number(currentUser.id) ||
+              row.username === currentUser.username
+            )
 
           const rowContent = (
             <>
@@ -177,11 +189,17 @@ export default function Leaderboard() {
             </>
           )
 
-          const rowClassName = `grid grid-cols-[56px_1fr_100px] items-center gap-4 border-b border-border py-5 ${
-            isCurrentUser
+          const rowClassName = `
+            grid grid-cols-[56px_1fr_100px]
+            items-center
+            gap-4
+            border-b
+            border-border
+            py-5
+            ${isCurrentUser
               ? 'bg-primary/10'
-              : 'hover:text-primary'
-          }`
+              : 'hover:text-primary'}
+          `
 
           if (teamId) {
             return (
