@@ -318,24 +318,12 @@ func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	cookie, err := r.Cookie("session_id")
-	if err != nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	userID, exists := h.Sessions.GetUserID(cookie.Value)
-	if !exists {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	fantasyTeamID := r.PathValue("id")
 	ctx := context.Background()
 
 	var fantasyTeam models.FantasyTeam
 
-	err = h.DB.QueryRow(
+	err := h.DB.QueryRow(
 		ctx,
 		`SELECT id, user_id
 		 FROM fantasy_teams
@@ -353,11 +341,6 @@ func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Reque
 		}
 
 		http.Error(w, "Failed to get fantasy team", http.StatusInternalServerError)
-		return
-	}
-
-	if fantasyTeam.UserID != userID {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
