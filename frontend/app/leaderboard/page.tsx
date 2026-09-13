@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { api } from '@/lib/api'
 import { asArray, errorMessage } from '@/lib/types'
 import type { LeaderboardEntry, TournamentDay } from '@/lib/types'
@@ -88,33 +89,55 @@ export default function Leaderboard() {
       )}
 
       <div className="mt-10 border-t border-border">
-        {rows.map((row, i) => (
-          <div
-            key={row.fantasy_team_id || row.user_id || i}
-            className="grid grid-cols-[56px_1fr_100px] items-center gap-4 border-b border-border py-5"
-          >
-            <span
-              className={
-                i < 3
-                  ? 'font-mono text-primary'
-                  : 'font-mono text-muted-foreground'
-              }
+        {rows.map((row, i) => {
+          const teamId = row.fantasy_team_id
+
+          const rowContent = (
+            <>
+              <span
+                className={
+                  i < 3
+                    ? 'font-mono text-primary'
+                    : 'font-mono text-muted-foreground'
+                }
+              >
+                #{row.rank || i + 1}
+              </span>
+
+              <strong className="font-mono uppercase">
+                {row.username || 'Player'}
+              </strong>
+
+              <span className="text-right font-mono">
+                {row.points ?? 0}{' '}
+                <small className="text-muted-foreground">
+                  PTS
+                </small>
+              </span>
+            </>
+          )
+
+          if (teamId) {
+            return (
+              <Link
+                href={`/fantasy-team/${teamId}`}
+                key={teamId || row.user_id || i}
+                className="grid grid-cols-[56px_1fr_100px] items-center gap-4 border-b border-border py-5 hover:text-primary"
+              >
+                {rowContent}
+              </Link>
+            )
+          }
+
+          return (
+            <div
+              key={row.user_id || i}
+              className="grid grid-cols-[56px_1fr_100px] items-center gap-4 border-b border-border py-5"
             >
-              #{row.rank || i + 1}
-            </span>
-
-            <strong className="font-mono uppercase">
-              {row.username || 'Player'}
-            </strong>
-
-            <span className="text-right font-mono">
-              {row.points ?? 0}{' '}
-              <small className="text-muted-foreground">
-                PTS
-              </small>
-            </span>
-          </div>
-        ))}
+              {rowContent}
+            </div>
+          )
+        })}
       </div>
     </main>
   )
