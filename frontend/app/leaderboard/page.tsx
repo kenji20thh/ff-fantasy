@@ -10,9 +10,19 @@ export default function Leaderboard() {
   const [rows, setRows] = useState<LeaderboardEntry[]>([])
   const [days, setDays] = useState<TournamentDay[]>([])
   const [selectedDay, setSelectedDay] = useState('')
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null)
   const [state, setState] = useState('Loading leaderboard…')
 
   useEffect(() => {
+    // Get the logged-in user's ID
+    const storedUserId =
+      localStorage.getItem('user_id') ||
+      localStorage.getItem('userId')
+
+    if (storedUserId) {
+      setCurrentUserId(Number(storedUserId))
+    }
+
     api.days()
       .then((data) => {
         setDays(asArray<TournamentDay>(data))
@@ -39,6 +49,10 @@ export default function Leaderboard() {
         setRows([])
       })
   }, [selectedDay])
+
+  const currentUser = rows.find(
+    (row) => Number(row.user_id) === Number(currentUserId)
+  )
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-5 py-10">
@@ -88,23 +102,61 @@ export default function Leaderboard() {
         </p>
       )}
 
+      {/* CURRENT USER RANKING */}
+      {currentUser && (
+        <div className="mt-8 border border-primary bg-primary/5 px-5 py-5">
+          <p className="eyebrow">
+            Your ranking
+          </p>
+
+          <div className="mt-3 grid grid-cols-[56px_1fr_100px] items-center gap-4">
+            <span className="font-mono text-primary">
+              #{currentUser.rank}
+            </span>
+
+            <strong className="font-mono uppercase">
+              {currentUser.username || 'Player'}
+            </strong>
+
+            <span className="text-right font-mono">
+              {currentUser.points ?? 0}{' '}
+              <small className="text-muted-foreground">
+                PTS
+              </small>
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* FULL LEADERBOARD */}
       <div className="mt-10 border-t border-border">
         {rows.map((row, i) => {
           const teamId = row.fantasy_team_id
+
+          const isCurrentUser =
+            Number(row.user_id) === Number(currentUserId)
 
           const rowContent = (
             <>
               <span
                 className={
-                  i < 3
-                    ? 'font-mono text-primary'
-                    : 'font-mono text-muted-foreground'
+                  isCurrentUser
+                    ? 'font-mono font-bold text-primary'
+                    : i < 3
+                      ? 'font-mono text-primary'
+                      : 'font-mono text-muted-foreground'
                 }
               >
                 #{row.rank || i + 1}
               </span>
 
-              <strong className="font-mono uppercase">
+              <strong
+                className={
+                  isCurrentUser
+                    ? 'font-mono uppercase text-primary'
+                    : 'font-mono uppercase'
+                }
+              >
                 {row.username || 'Player'}
               </strong>
 
@@ -117,12 +169,18 @@ export default function Leaderboard() {
             </>
           )
 
+          const rowClassName = `grid grid-cols-[56px_1fr_100px] items-center gap-4 border-b border-border py-5 ${
+            isCurrentUser
+              ? 'bg-primary/10'
+              : 'hover:text-primary'
+          }`
+
           if (teamId) {
             return (
               <Link
                 href={`/fantasy-team/${teamId}`}
                 key={teamId || row.user_id || i}
-                className="grid grid-cols-[56px_1fr_100px] items-center gap-4 border-b border-border py-5 hover:text-primary"
+                className={rowClassName}
               >
                 {rowContent}
               </Link>
@@ -132,7 +190,7 @@ export default function Leaderboard() {
           return (
             <div
               key={row.user_id || i}
-              className="grid grid-cols-[56px_1fr_100px] items-center gap-4 border-b border-border py-5"
+              className={rowClassName}
             >
               {rowContent}
             </div>
