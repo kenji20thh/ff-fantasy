@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"sort"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -641,6 +640,12 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 		return
 	}
 
+	dayID := r.URL.Query().Get("day_id")
+	if dayID == "" {
+		http.Error(w, "day_id is required", http.StatusBadRequest)
+		return
+	}
+
 	fantasyTeamID := r.PathValue("id")
 
 	cookie, err := r.Cookie("session_id")
@@ -655,17 +660,16 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 		return
 	}
 
-	ctx := context.Background()
-
 	var teamOwnerID int
+	var captainPlayerID *int
 
 	err = h.DB.QueryRow(
-		ctx,
-		`SELECT user_id
+		context.Background(),
+		`SELECT user_id, captain_player_id
 		 FROM fantasy_teams
 		 WHERE id = $1`,
 		fantasyTeamID,
-	).Scan(&teamOwnerID)
+	).Scan(&teamOwnerID, &captainPlayerID)
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -698,244 +702,116 @@ func (h *FantasyTeamHandler) GetFantasyTeamPoints(w http.ResponseWriter, r *http
 		TotalPoints int         `json:"total_points"`
 	}
 
-	type DayScore struct {
-		DayID       int           `json:"day_id"`
-		DayName     string        `json:"day_name"`
-		CaptainID   *int          `json:"captain_player_id"`
-		TotalPoints int           `json:"total_points"`
-		Players     []PlayerScore `json:"players"`
-	}
-
-	// Get every saved day selection.
 	rows, err := h.DB.Query(
-		ctx,
+		context.Background(),
 		`SELECT
-			s.id,
-			s.tournament_day_id,
-			td.name,
-			s.captain_player_id
-		 FROM fantasy_team_day_selections s
-		 JOIN tournament_days td
-			ON td.id = s.tournament_day_id
-		 WHERE s.fantasy_team_id = $1
-		 ORDER BY s.tournament_day_id`,
+			ftp.player_id,
+			prs.room_id,
+			COALESCE(prs.kills, 0),
+			COALESCE(prs.assists, 0),
+			COALESCE(prs.first_blood, false),
+			COALESCE(prs.placement, 0)
+		FROM fantasy_team_players ftp
+		LEFT JOIN rooms r
+			ON r.tournament_day_id = $1
+		LEFT JOIN player_room_stats prs
+			ON prs.room_id = r.id
+			AND prs.player_id = ftp.player_id
+		WHERE ftp.fantasy_team_id = $2
+		ORDER BY ftp.player_id, prs.room_id`,
+		dayID,
 		fantasyTeamID,
 	)
 
 	if err != nil {
-		http.Error(w, "Failed to get fantasy team selections", http.StatusInternalServerError)
+		http.Error(w, "Failed to get player statistics", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	type Selection struct {
-		ID        int
-		DayID     int
-		DayName   string
-		CaptainID *int
-	}
-
-	var selections []Selection
+	players := make(map[int]*PlayerScore)
 
 	for rows.Next() {
-		var selection Selection
+		var (
+			playerID   int
+			roomID     *int
+			kills      int
+			assists    int
+			firstBlood bool
+			placement  int
+		)
 
-		if err := rows.Scan(
-			&selection.ID,
-			&selection.DayID,
-			&selection.DayName,
-			&selection.CaptainID,
-		); err != nil {
-			http.Error(w, "Failed to read fantasy team selection", http.StatusInternalServerError)
-			return
-		}
-
-		selections = append(selections, selection)
-	}
-
-	if err := rows.Err(); err != nil {
-		http.Error(w, "Error reading selections", http.StatusInternalServerError)
-		http.Error(w, "Error reading selections: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Used to provide the old top-level "players" response too.
-	aggregate := make(map[int]*PlayerScore)
-
-	var dayScores []DayScore
-	totalPoints := 0
-
-	for _, selection := range selections {
-		playerRows, err := h.DB.Query(
-			ctx,
-			`SELECT player_id
-			 FROM fantasy_team_day_players
-			 WHERE selection_id = $1
-			 ORDER BY player_id`,
-			selection.ID,
+		err := rows.Scan(
+			&playerID,
+			&roomID,
+			&kills,
+			&assists,
+			&firstBlood,
+			&placement,
 		)
 
 		if err != nil {
-			http.Error(w, "Failed to get day players", http.StatusInternalServerError)
+			http.Error(w, "Failed to read player statistics", http.StatusInternalServerError)
 			return
 		}
 
-		var playerIDs []int
-
-		for playerRows.Next() {
-			var playerID int
-
-			if err := playerRows.Scan(&playerID); err != nil {
-				playerRows.Close()
-				http.Error(w, "Failed to read day player", http.StatusInternalServerError)
-				return
-			}
-
-			playerIDs = append(playerIDs, playerID)
-		}
-
-		playerRows.Close()
-
-		dayPlayers := make(map[int]*PlayerScore)
-
-		for _, playerID := range playerIDs {
-			dayPlayers[playerID] = &PlayerScore{
+		if _, exists := players[playerID]; !exists {
+			players[playerID] = &PlayerScore{
 				PlayerID: playerID,
-				Captain:  selection.CaptainID != nil && playerID == *selection.CaptainID,
+				Captain:  captainPlayerID != nil && playerID == *captainPlayerID,
 				Rooms:    []RoomScore{},
 			}
-
-			if _, exists := aggregate[playerID]; !exists {
-				aggregate[playerID] = &PlayerScore{
-					PlayerID: playerID,
-					Rooms:    []RoomScore{},
-				}
-			}
 		}
 
-		// Get statistics ONLY from this tournament day.
-		statRows, err := h.DB.Query(
-			ctx,
-			`SELECT
-				prs.player_id,
-				prs.room_id,
-				COALESCE(prs.kills, 0),
-				COALESCE(prs.assists, 0),
-				COALESCE(prs.first_blood, false),
-				COALESCE(prs.placement, 0)
-			FROM player_room_stats prs
-			JOIN rooms r
-				ON r.id = prs.room_id
-			WHERE r.tournament_day_id = $1
-				AND prs.player_id = ANY($2)
-			ORDER BY prs.player_id, prs.room_id`,
-			selection.DayID,
-			playerIDs,
+		if roomID == nil {
+			continue
+		}
+
+		points := scoring.PlayerRoomPoints(
+			kills,
+			assists,
+			firstBlood,
+			placement,
 		)
 
-		if err != nil {
-			http.Error(w, "Failed to get player statistics", http.StatusInternalServerError)
-			return
-		}
-
-		for statRows.Next() {
-			var (
-				playerID   int
-				roomID     int
-				kills      int
-				assists    int
-				firstBlood bool
-				placement  int
-			)
-
-			if err := statRows.Scan(
-				&playerID,
-				&roomID,
-				&kills,
-				&assists,
-				&firstBlood,
-				&placement,
-			); err != nil {
-				statRows.Close()
-				http.Error(w, "Failed to read player statistics", http.StatusInternalServerError)
-				return
-			}
-
-			points := scoring.PlayerRoomPoints(
-				kills,
-				assists,
-				firstBlood,
-				placement,
-			)
-
-			roomScore := RoomScore{
-				RoomID:     roomID,
+		players[playerID].Rooms = append(
+			players[playerID].Rooms,
+			RoomScore{
+				RoomID:     *roomID,
 				Kills:      kills,
 				Assists:    assists,
 				FirstBlood: firstBlood,
 				Placement:  placement,
 				Points:     points,
-			}
+			},
+		)
 
-			if player := dayPlayers[playerID]; player != nil {
-				player.Rooms = append(player.Rooms, roomScore)
-				player.TotalPoints += points
-			}
-
-			aggregate[playerID].Rooms = append(
-				aggregate[playerID].Rooms,
-				roomScore,
-			)
-
-			aggregate[playerID].TotalPoints += points
-		}
-
-		statRows.Close()
-
-		dayPlayerScores := make([]PlayerScore, 0, len(dayPlayers))
-		var dayTotal int
-
-		for _, player := range dayPlayers {
-			if player.Captain {
-				player.TotalPoints *= 2
-			}
-
-			dayTotal += player.TotalPoints
-			dayPlayerScores = append(dayPlayerScores, *player)
-		}
-
-		sort.Slice(dayPlayerScores, func(i, j int) bool {
-			return dayPlayerScores[i].PlayerID < dayPlayerScores[j].PlayerID
-		})
-
-		dayScores = append(dayScores, DayScore{
-			DayID:       selection.DayID,
-			DayName:     selection.DayName,
-			CaptainID:   selection.CaptainID,
-			TotalPoints: dayTotal,
-			Players:     dayPlayerScores,
-		})
-
-		totalPoints += dayTotal
+		players[playerID].TotalPoints += points
 	}
 
-	aggregateScores := make([]PlayerScore, 0, len(aggregate))
-
-	for _, player := range aggregate {
-		aggregateScores = append(aggregateScores, *player)
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Error reading player statistics", http.StatusInternalServerError)
+		return
 	}
 
-	sort.Slice(aggregateScores, func(i, j int) bool {
-		return aggregateScores[i].PlayerID < aggregateScores[j].PlayerID
-	})
+	playerScores := make([]PlayerScore, 0, len(players))
+	totalPoints := 0
+
+	for _, player := range players {
+		if player.Captain {
+			player.TotalPoints *= 2
+		}
+
+		totalPoints += player.TotalPoints
+		playerScores = append(playerScores, *player)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"fantasy_team_id": fantasyTeamID,
 		"total_points":    totalPoints,
-		"players":         aggregateScores,
-		"days":            dayScores,
+		"players":         playerScores,
 	})
 }
 
