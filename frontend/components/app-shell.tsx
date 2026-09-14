@@ -111,7 +111,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
                 <Link href="/fantasy-team">My fantasy team</Link>
 
-                {user.role === "admin" && <Link href="/admin">Admin</Link>}
+                {user.role === "admin" && (
+                  <Link
+                    className="flex items-center gap-1 text-primary"
+                    href="/admin"
+                  >
+                    <Shield size={14} />
+                    Admin
+                  </Link>
+                )}
 
                 <Link
                   className="text-muted-foreground hover:text-primary"
@@ -120,8 +128,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {user.username}
                 </Link>
 
-                <button className="text-left" onClick={signOut}>
-                  Logout
+                <button onClick={signOut} className="text-muted-foreground">
+                  <LogOut size={16} />
                 </button>
               </>
             ) : (
