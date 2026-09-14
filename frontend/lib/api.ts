@@ -155,4 +155,10 @@ export const api = {
 
   placementOverall: () =>
     apiFetch<PlacementTeam[]>("/api/placement?scope=overall"),
+
+  changePassword: (body: { old_password: string; new_password: string }) =>
+  apiFetch("/api/change-password", {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
 };

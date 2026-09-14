@@ -202,3 +202,93 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
 }
+
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cookie, err := r.Cookie("session_id")
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, exists := h.Sessions.GetUserID(cookie.Value)
+	if !exists {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var request struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if request.OldPassword == "" || request.NewPassword == "" {
+		http.Error(w, "Old and new password are required", http.StatusBadRequest)
+		return
+	}
+
+	if len(request.NewPassword) < 8 {
+		http.Error(w, "New password must be at least 8 characters", http.StatusBadRequest)
+		return
+	}
+
+	var currentHash string
+
+	err = h.DB.QueryRow(
+		context.Background(),
+		`SELECT password_hash
+		 FROM users
+		 WHERE id = $1`,
+		userID,
+	).Scan(&currentHash)
+
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword(
+		[]byte(currentHash),
+		[]byte(request.OldPassword),
+	); err != nil {
+		http.Error(w, "Current password is incorrect", http.StatusUnauthorized)
+		return
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword(
+		[]byte(request.NewPassword),
+		bcrypt.DefaultCost,
+	)
+	if err != nil {
+		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+		return
+	}
+
+	_, err = h.DB.Exec(
+		context.Background(),
+		`UPDATE users
+		 SET password_hash = $1
+		 WHERE id = $2`,
+		string(newHash),
+		userID,
+	)
+
+	if err != nil {
+		http.Error(w, "Failed to update password", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Password updated successfully",
+	})
+}

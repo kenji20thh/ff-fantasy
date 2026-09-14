@@ -1,28 +1,28 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { LogOut, Menu, Shield, Trophy, X } from 'lucide-react'
-import { useState } from 'react'
-import { useAuth } from '@/lib/auth'
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { LogOut, Menu, Shield, Trophy, X } from "lucide-react";
+import { useState } from "react";
+import { useAuth } from "@/lib/auth";
 
 const links = [
-  ['/placement', 'Placement'],
-  ['/teams', 'Teams'],
-  ['/schedule', 'Schedule'],
-  ['/players', 'Players'],
-  ['/leaderboard', 'Leaderboard'],
-]
+  ["/placement", "Placement"],
+  ["/teams", "Teams"],
+  ["/schedule", "Schedule"],
+  ["/players", "Players"],
+  ["/leaderboard", "Leaderboard"],
+];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth()
-  const router = useRouter()
-  const pathname = usePathname()
-  const [open, setOpen] = useState(false)
+  const { user, logout } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
 
   async function signOut() {
-    await logout()
-    router.push('/')
+    await logout();
+    router.push("/");
   }
 
   return (
@@ -36,7 +36,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="grid size-8 place-items-center bg-primary text-primary-foreground">
               <Trophy size={16} />
             </span>
-
             FF<span className="text-primary">/</span>FANTASY
           </Link>
 
@@ -46,8 +45,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 key={href}
                 className={
                   pathname.startsWith(href)
-                    ? 'text-primary'
-                    : 'text-muted-foreground'
+                    ? "text-primary"
+                    : "text-muted-foreground"
                 }
                 href={href}
               >
@@ -57,14 +56,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             {user ? (
               <>
-                <Link
-                  className="text-muted-foreground"
-                  href="/fantasy-team"
-                >
+                <Link className="text-muted-foreground" href="/fantasy-team">
                   My fantasy team
                 </Link>
 
-                {user.role === 'admin' && (
+                {user.role === "admin" && (
                   <Link
                     className="flex items-center gap-1 text-primary"
                     href="/admin"
@@ -74,18 +70,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </Link>
                 )}
 
-                <button
-                  onClick={signOut}
-                  className="text-muted-foreground"
-                >
+                <button onClick={signOut} className="text-muted-foreground">
                   <LogOut size={16} />
                 </button>
               </>
             ) : (
               <>
-                <Link href="/login">
-                  Login
-                </Link>
+                <Link href="/login">Login</Link>
 
                 <Link
                   href="/register"
@@ -109,47 +100,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {open && (
           <nav className="flex flex-col gap-4 border-t border-border px-4 py-5 md:hidden">
             {links.map(([href, label]) => (
-              <Link
-                key={href}
-                href={href}
-                onClick={() => setOpen(false)}
-              >
+              <Link key={href} href={href} onClick={() => setOpen(false)}>
                 {label}
               </Link>
             ))}
 
             {user ? (
               <>
-                <Link href="/dashboard">
-                  Dashboard
-                </Link>
+                <Link href="/dashboard">Dashboard</Link>
 
-                <Link href="/fantasy-team">
-                  My fantasy team
-                </Link>
+                <Link href="/fantasy-team">My fantasy team</Link>
 
-                {user.role === 'admin' && (
-                  <Link href="/admin">
-                    Admin
-                  </Link>
-                )}
+                {user.role === "admin" && <Link href="/admin">Admin</Link>}
 
-                <button
-                  className="text-left"
-                  onClick={signOut}
+                <Link
+                  className="text-muted-foreground hover:text-primary"
+                  href="/account"
                 >
+                  {user.username}
+                </Link>
+
+                <button className="text-left" onClick={signOut}>
                   Logout
                 </button>
               </>
             ) : (
               <>
-                <Link href="/login">
-                  Login
-                </Link>
+                <Link href="/login">Login</Link>
 
-                <Link href="/register">
-                  Register
-                </Link>
+                <Link href="/register">Register</Link>
               </>
             )}
           </nav>
@@ -158,43 +137,39 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {children}
     </div>
-  )
+  );
 }
 
 export function Notice({
   children,
-  kind = 'info',
+  kind = "info",
 }: {
-  children: React.ReactNode
-  kind?: 'info' | 'error' | 'success'
+  children: React.ReactNode;
+  kind?: "info" | "error" | "success";
 }) {
   return (
     <div
-      role={kind === 'error' ? 'alert' : 'status'}
+      role={kind === "error" ? "alert" : "status"}
       className={`border p-4 text-sm ${
-        kind === 'error'
-          ? 'border-red-400/50 text-red-200'
-          : kind === 'success'
-            ? 'border-primary/50 text-primary'
-            : 'border-border text-muted-foreground'
+        kind === "error"
+          ? "border-red-400/50 text-red-200"
+          : kind === "success"
+            ? "border-primary/50 text-primary"
+            : "border-border text-muted-foreground"
       }`}
     >
       {children}
     </div>
-  )
+  );
 }
 
-export function Loading({
-  label = 'Loading...',
-}: {
-  label?: string
-}) {
+export function Loading({ label = "Loading..." }: { label?: string }) {
   return (
     <div className="flex min-h-48 items-center justify-center font-mono text-sm text-muted-foreground">
       <span className="mr-3 size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       {label}
     </div>
-  )
+  );
 }
 
 export function PageTitle({
@@ -202,44 +177,36 @@ export function PageTitle({
   title,
   children,
 }: {
-  eyebrow: string
-  title: string
-  children?: React.ReactNode
+  eyebrow: string;
+  title: string;
+  children?: React.ReactNode;
 }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p className="eyebrow">
-          {eyebrow}
-        </p>
+        <p className="eyebrow">{eyebrow}</p>
 
-        <h1 className="section-title">
-          {title}
-        </h1>
+        <h1 className="section-title">{title}</h1>
       </div>
 
       {children}
     </div>
-  )
+  );
 }
 
 export const inputClass =
-  'w-full border border-border bg-card px-3 py-3 text-sm outline-none focus:border-primary'
+  "w-full border border-border bg-card px-3 py-3 text-sm outline-none focus:border-primary";
 
 export const buttonClass =
-  'bg-primary px-5 py-3 text-xs font-bold uppercase tracking-widest text-primary-foreground disabled:cursor-not-allowed disabled:opacity-40'
+  "bg-primary px-5 py-3 text-xs font-bold uppercase tracking-widest text-primary-foreground disabled:cursor-not-allowed disabled:opacity-40";
 
 export const secondaryClass =
-  'border border-border px-5 py-3 text-xs font-bold uppercase tracking-widest text-foreground hover:border-primary'
+  "border border-border px-5 py-3 text-xs font-bold uppercase tracking-widest text-foreground hover:border-primary";
 
-export function Empty({
-  label,
-}: {
-  label: string
-}) {
+export function Empty({ label }: { label: string }) {
   return (
     <div className="border border-dashed border-border p-10 text-center text-muted-foreground">
       {label}
     </div>
-  )
+  );
 }
