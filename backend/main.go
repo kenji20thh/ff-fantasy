@@ -107,6 +107,7 @@ func main() {
 	http.HandleFunc("/api/login", authHandler.Login)
 	http.HandleFunc("/api/logout", authHandler.Logout)
 	http.HandleFunc("/api/change-password", authHandler.ChangePassword)
+	http.HandleFunc("/api/change-username", authHandler.ChangeUsername)
 	http.HandleFunc("/api/me", authHandler.Me)
 
 	http.HandleFunc(

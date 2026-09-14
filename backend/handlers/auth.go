@@ -292,3 +292,68 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		"message": "Password updated successfully",
 	})
 }
+
+func (h *AuthHandler) ChangeUsername(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cookie, err := r.Cookie("session_id")
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, exists := h.Sessions.GetUserID(cookie.Value)
+	if !exists {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var request struct {
+		Username string `json:"username"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if len(request.Username) < 3 || len(request.Username) > 50 {
+		http.Error(w, "Username must be between 3 and 50 characters", http.StatusBadRequest)
+		return
+	}
+
+	var user models.User
+
+	err = h.DB.QueryRow(
+		context.Background(),
+		`UPDATE users
+		 SET username = $1
+		 WHERE id = $2
+		 RETURNING id, username, email, role`,
+		request.Username,
+		userID,
+	).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.Role,
+	)
+
+	if err != nil {
+		var pgErr *pgconn.PgError
+
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			http.Error(w, "Username is already taken", http.StatusConflict)
+			return
+		}
+
+		http.Error(w, "Failed to update username", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
+}

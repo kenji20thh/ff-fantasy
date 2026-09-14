@@ -161,4 +161,10 @@ export const api = {
     method: "POST",
     body: JSON.stringify(body),
   }),
+
+  changeUsername: (body: { username: string }) =>
+  apiFetch("/api/change-username", {
+    method: "POST",
+    body: JSON.stringify(body),
+  }),
 };
