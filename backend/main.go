@@ -188,6 +188,16 @@ func main() {
 		),
 	)
 
+	// hash, err := bcrypt.GenerateFromPassword(
+	// 	[]byte("testpass123"),
+	// 	bcrypt.DefaultCost,
+	// )
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// fmt.Println(string(hash))
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
