@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LogOut, Menu, Shield, Trophy, X } from 'lucide-react'
+import { LogOut, Menu, Shield, Trophy, User, X } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '@/lib/auth'
 
@@ -74,6 +74,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </Link>
                 )}
 
+                <Link
+                  className="flex items-center gap-1.5 text-muted-foreground hover:text-primary"
+                  href="/account"
+                >
+                  <User size={14} />
+                  {user.username}
+                </Link>
+
                 <button
                   onClick={signOut}
                   className="text-muted-foreground"
@@ -135,9 +143,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 )}
 
                 <Link
-                  className="text-muted-foreground hover:text-primary"
+                  className="flex items-center gap-1.5 text-muted-foreground hover:text-primary"
                   href="/account"
                 >
+                  <User size={14} />
                   {user.username}
                 </Link>
 
