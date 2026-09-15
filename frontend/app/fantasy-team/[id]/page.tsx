@@ -1,19 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   Check,
   ChevronDown,
   Crown,
-  Edit3,
   Loader2,
   Lock,
-  Save,
   Search,
   Shield,
-  Trophy,
   Users,
   X,
 } from "lucide-react";
@@ -40,15 +36,15 @@ type FantasyDaySelection = {
 type FantasyTeamResponse = {
   id: number;
   user_id: number;
-  username?: string;
   day_id?: number;
   player_ids?: number[];
   captain_player_id?: number | null;
   days?: FantasyDaySelection[];
 };
 
-type RoomScore = {
+export type PlayerRoomStat = {
   room_id: number;
+  room_number: number;
   kills: number;
   assists: number;
   first_blood: boolean;
@@ -61,7 +57,7 @@ type PlayerScore = {
   nickname?: string;
   team_id?: number;
   captain?: boolean;
-  rooms?: RoomScore[];
+  rooms?: PlayerRoomStat[];
   total_points: number;
 };
 
@@ -123,29 +119,21 @@ function sortDaysByWeekDay(
   );
 }
 
-export default function FantasyTeamPage() {
-  const params = useParams();
-  const fantasyID = Number(params.id);
-
+export default function FantasyTeamBuilderPage() {
+  const router = useRouter();
   const { user } = useAuth();
-
-  const [fantasyTeam, setFantasyTeam] =
-    useState<FantasyTeamResponse | null>(null);
-
-  const [points, setPoints] =
-    useState<FantasyPointsResponse | null>(null);
 
   const [days, setDays] =
     useState<TournamentDay[]>([]);
 
-  const [teams, setTeams] =
+  const [allTeams, setAllTeams] =
     useState<Team[]>([]);
+
+  const [players, setPlayers] =
+    useState<Player[]>([]);
 
   const [selectedDay, setSelectedDay] =
     useState<TournamentDay | null>(null);
-
-  const [dayPlayers, setDayPlayers] =
-    useState<Player[]>([]);
 
   const [selected, setSelected] =
     useState<Player[]>([]);
@@ -153,7 +141,16 @@ export default function FantasyTeamPage() {
   const [captain, setCaptain] =
     useState<number | null>(null);
 
-  const [search, setSearch] =
+  const [daySelections, setDaySelections] =
+    useState<FantasyDaySelection[]>([]);
+
+  const [fantasyId, setFantasyId] =
+    useState<number | null>(null);
+
+  const [points, setPoints] =
+    useState<FantasyPointsResponse | null>(null);
+
+  const [playerSearch, setPlayerSearch] =
     useState("");
 
   const [selectedTeamFilter, setSelectedTeamFilter] =
@@ -168,9 +165,6 @@ export default function FantasyTeamPage() {
   const [saving, setSaving] =
     useState(false);
 
-  const [error, setError] =
-    useState("");
-
   const [message, setMessage] =
     useState("");
 
@@ -180,13 +174,10 @@ export default function FantasyTeamPage() {
   const [countdown, setCountdown] =
     useState("00:00:00:00");
 
-  const isOwner =
-    !!user &&
-    !!fantasyTeam &&
-    Number(user.id) ===
-      Number(fantasyTeam.user_id);
+  const [statsPlayer, setStatsPlayer] =
+    useState<Player | null>(null);
 
-  const selectedDayLocked = useMemo(() => {
+  const isDayLocked = useMemo(() => {
     if (!selectedDay?.deadline_at) {
       return false;
     }
@@ -198,8 +189,7 @@ export default function FantasyTeamPage() {
     );
   }, [selectedDay]);
 
-  const canEdit =
-    isOwner && !selectedDayLocked;
+  const canEdit = !isDayLocked;
 
   /* -------------------------------------------------------
      LIVE COUNTDOWN
@@ -305,109 +295,6 @@ export default function FantasyTeamPage() {
     );
   }, [points, selectedDay]);
 
-  const totalPoints =
-    points?.total_points ?? 0;
-
-  const ownerName =
-    fantasyTeam?.username ??
-    (isOwner
-      ? user?.username
-      : undefined) ??
-    "Fantasy Manager";
-
-  const participatingTeamIDs =
-    useMemo(() => {
-      if (!selectedDay) {
-        return [];
-      }
-
-      return getParticipatingTeamIDs(
-        selectedDay,
-      );
-    }, [selectedDay]);
-
-  const participatingTeams =
-    useMemo(() => {
-      if (
-        participatingTeamIDs.length === 0
-      ) {
-        return teams;
-      }
-
-      return teams.filter((team) =>
-        participatingTeamIDs.includes(
-          team.id,
-        ),
-      );
-    }, [
-      teams,
-      participatingTeamIDs,
-    ]);
-
-  const filteredPlayers = useMemo(() => {
-    const query = search
-      .trim()
-      .toLowerCase();
-
-    return [...dayPlayers]
-      .filter((player) => {
-        if (
-          selectedTeamFilter !== null &&
-          player.team_id !==
-            selectedTeamFilter
-        ) {
-          return false;
-        }
-
-        if (!query) {
-          return true;
-        }
-
-        return player.nickname
-          .toLowerCase()
-          .includes(query);
-      })
-      .sort((a, b) => {
-        if (b.price !== a.price) {
-          return b.price - a.price;
-        }
-
-        return a.nickname.localeCompare(
-          b.nickname,
-        );
-      });
-  }, [
-    dayPlayers,
-    search,
-    selectedTeamFilter,
-  ]);
-
-  function getTeamName(
-    teamID: number,
-  ) {
-    return (
-      teams.find(
-        (team) =>
-          team.id === teamID,
-      )?.name ?? "Unknown Team"
-    );
-  }
-
-  function getTeamLogo(
-    teamID: number,
-  ) {
-    return `/logos/${teamID}.png`;
-  }
-
-  function getDaySelection(
-    dayID: number,
-  ) {
-    return fantasyTeam?.days?.find(
-      (day) =>
-        day.day_id === dayID,
-    );
-  }
-
   function getPlayerScore(
     playerID: number,
   ) {
@@ -434,6 +321,105 @@ export default function FantasyTeamPage() {
     );
   }
 
+  function openPlayerStats(
+    player: Player,
+  ) {
+    if (!isDayLocked) {
+      return;
+    }
+
+    setStatsPlayer(player);
+  }
+
+  function closePlayerStats() {
+    setStatsPlayer(null);
+  }
+
+  /* -------------------------------------------------------
+     PARTICIPATING TEAMS
+  ------------------------------------------------------- */
+  const participatingTeams = useMemo(() => {
+    if (!selectedDay) {
+      return [];
+    }
+
+    const ids =
+      getParticipatingTeamIDs(
+        selectedDay,
+      );
+
+    if (ids.length === 0) {
+      return allTeams;
+    }
+
+    return allTeams.filter((team) =>
+      ids.includes(team.id),
+    );
+  }, [
+    selectedDay,
+    allTeams,
+  ]);
+
+  /* -------------------------------------------------------
+     FILTERED PLAYERS
+  ------------------------------------------------------- */
+  const filteredPlayers = useMemo(() => {
+    const query =
+      playerSearch.trim().toLowerCase();
+
+    return [...players]
+      .filter((player) => {
+        if (
+          selectedTeamFilter !== null &&
+          player.team_id !==
+            selectedTeamFilter
+        ) {
+          return false;
+        }
+
+        if (
+          query &&
+          !player.nickname
+            .toLowerCase()
+            .includes(query)
+        ) {
+          return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        if (b.price !== a.price) {
+          return b.price - a.price;
+        }
+
+        return a.nickname.localeCompare(
+          b.nickname,
+        );
+      });
+  }, [
+    players,
+    playerSearch,
+    selectedTeamFilter,
+  ]);
+
+  function getTeamName(
+    teamID: number,
+  ) {
+    return (
+      allTeams.find(
+        (team) =>
+          team.id === teamID,
+      )?.name ?? "Unknown Team"
+    );
+  }
+
+  function getTeamLogo(
+    teamID: number,
+  ) {
+    return `/logos/${teamID}.png`;
+  }
+
   function formatDeadline(
     day: TournamentDay,
   ) {
@@ -452,15 +438,18 @@ export default function FantasyTeamPage() {
   }
 
   /* -------------------------------------------------------
-     LOAD SELECTED DAY PLAYERS
+     LOAD PLAYERS FOR A DAY
   ------------------------------------------------------- */
   async function loadDay(
     day: TournamentDay,
+    fantasyTeam?: FantasyTeamResponse | null,
+    availableTeams = allTeams,
   ) {
     setLoadingDay(true);
     setMessage("");
-    setSearch("");
+    setPlayerSearch("");
     setSelectedTeamFilter(null);
+    setStatsPlayer(null);
 
     try {
       const participatingTeamIDs =
@@ -468,12 +457,13 @@ export default function FantasyTeamPage() {
 
       const dayTeams =
         participatingTeamIDs.length > 0
-          ? teams.filter((team) =>
-              participatingTeamIDs.includes(
-                team.id,
-              ),
+          ? availableTeams.filter(
+              (team) =>
+                participatingTeamIDs.includes(
+                  team.id,
+                ),
             )
-          : teams;
+          : availableTeams;
 
       const responses =
         await Promise.all(
@@ -482,7 +472,7 @@ export default function FantasyTeamPage() {
           ),
         );
 
-      const players =
+      const dayPlayers =
         responses.flatMap(
           (response) =>
             asArray<Player>(
@@ -493,10 +483,12 @@ export default function FantasyTeamPage() {
       const uniquePlayers =
         Array.from(
           new Map(
-            players.map((player) => [
-              player.id,
-              player,
-            ]),
+            dayPlayers.map(
+              (player) => [
+                player.id,
+                player,
+              ],
+            ),
           ).values(),
         );
 
@@ -510,12 +502,15 @@ export default function FantasyTeamPage() {
         );
       });
 
-      setDayPlayers(
+      setPlayers(
         uniquePlayers,
       );
 
       const selection =
-        getDaySelection(day.id);
+        fantasyTeam?.days?.find(
+          (item) =>
+            item.day_id === day.id,
+        );
 
       if (selection) {
         const restoredPlayers =
@@ -538,12 +533,12 @@ export default function FantasyTeamPage() {
         setSelected([]);
         setCaptain(null);
       }
-    } catch (err) {
+    } catch (error) {
       setMessage(
-        errorMessage(err),
+        errorMessage(error),
       );
 
-      setDayPlayers([]);
+      setPlayers([]);
       setSelected([]);
       setCaptain(null);
     } finally {
@@ -556,31 +551,20 @@ export default function FantasyTeamPage() {
   ------------------------------------------------------- */
   async function loadInitialData() {
     setLoading(true);
-    setError("");
+    setMessage("");
 
     try {
       const [
-        fantasyResponse,
-        pointsResponse,
         daysResponse,
         teamsResponse,
+        fantasyResponse,
       ] = await Promise.all([
-        api.fantasy(fantasyID),
-        api.fantasyPoints(
-          fantasyID,
-        ),
         api.days(),
         api.teams(),
+        api.myFantasyTeam().catch(
+          () => null,
+        ),
       ]);
-
-      const fantasy =
-        fantasyResponse as FantasyTeamResponse;
-
-      if (!fantasy) {
-        throw new Error(
-          "Fantasy team not found.",
-        );
-      }
 
       const loadedDays =
         asArray<TournamentDay>(
@@ -594,21 +578,42 @@ export default function FantasyTeamPage() {
           teamsResponse,
         );
 
-      setFantasyTeam(
-        fantasy,
-      );
-
-      setPoints(
-        pointsResponse as FantasyPointsResponse,
-      );
-
       setDays(
         loadedDays,
       );
 
-      setTeams(
+      setAllTeams(
         loadedTeams,
       );
+
+      const fantasyTeam =
+        fantasyResponse as
+          | FantasyTeamResponse
+          | null;
+
+      if (fantasyTeam?.id) {
+        setFantasyId(
+          fantasyTeam.id,
+        );
+
+        setDaySelections(
+          fantasyTeam.days ??
+            [],
+        );
+
+        try {
+          const pointsResponse =
+            await api.fantasyPoints(
+              fantasyTeam.id,
+            );
+
+          setPoints(
+            pointsResponse as FantasyPointsResponse,
+          );
+        } catch {
+          setPoints(null);
+        }
+      }
 
       if (
         loadedDays.length ===
@@ -634,101 +639,14 @@ export default function FantasyTeamPage() {
         firstUnlocked,
       );
 
-      const participatingTeamIDs =
-        getParticipatingTeamIDs(
-          firstUnlocked,
-        );
-
-      const dayTeams =
-        participatingTeamIDs.length >
-        0
-          ? loadedTeams.filter(
-              (team) =>
-                participatingTeamIDs.includes(
-                  team.id,
-                ),
-            )
-          : loadedTeams;
-
-      const responses =
-        await Promise.all(
-          dayTeams.map((team) =>
-            api.players(
-              team.id,
-            ),
-          ),
-        );
-
-      const loadedPlayers =
-        responses.flatMap(
-          (response) =>
-            asArray<Player>(
-              response,
-            ),
-        );
-
-      const uniquePlayers =
-        Array.from(
-          new Map(
-            loadedPlayers.map(
-              (player) => [
-                player.id,
-                player,
-              ],
-            ),
-          ).values(),
-        );
-
-      uniquePlayers.sort(
-        (a, b) => {
-          if (
-            b.price !==
-            a.price
-          ) {
-            return (
-              b.price -
-              a.price
-            );
-          }
-
-          return a.nickname.localeCompare(
-            b.nickname,
-          );
-        },
+      await loadDay(
+        firstUnlocked,
+        fantasyTeam,
+        loadedTeams,
       );
-
-      setDayPlayers(
-        uniquePlayers,
-      );
-
-      const selection =
-        fantasy.days?.find(
-          (item) =>
-            item.day_id ===
-            firstUnlocked.id,
-        );
-
-      if (selection) {
-        setSelected(
-          uniquePlayers.filter(
-            (player) =>
-              selection.player_ids.includes(
-                player.id,
-              ),
-          ),
-        );
-
-        setCaptain(
-          selection.captain_player_id ??
-            null,
-        );
-      } else {
-        setSelected([]);
-        setCaptain(null);
-      }
-    } catch (err) {
-      setError(
-        errorMessage(err),
+    } catch (error) {
+      setMessage(
+        errorMessage(error),
       );
     } finally {
       setLoading(false);
@@ -736,22 +654,12 @@ export default function FantasyTeamPage() {
   }
 
   useEffect(() => {
-    if (
-      !fantasyID ||
-      Number.isNaN(
-        fantasyID,
-      )
-    ) {
-      setError(
-        "Invalid fantasy team.",
-      );
-      setLoading(false);
-      return;
-    }
-
     loadInitialData();
-  }, [fantasyID]);
+  }, []);
 
+  /* -------------------------------------------------------
+     CHANGE DAY
+  ------------------------------------------------------- */
   async function changeDay(
     day: TournamentDay,
   ) {
@@ -766,13 +674,24 @@ export default function FantasyTeamPage() {
     setSelectedDay(day);
     setOpenDayMenu(false);
 
-    await loadDay(day);
+    await loadDay(
+      day,
+      {
+        id:
+          fantasyId ?? 0,
+        user_id:
+          user?.id ?? 0,
+        days:
+          daySelections,
+      },
+      allTeams,
+    );
   }
 
   /* -------------------------------------------------------
-     PLAYER SELECTION
+     SELECT PLAYER
   ------------------------------------------------------- */
-  function togglePlayer(
+  function selectPlayer(
     player: Player,
   ) {
     if (
@@ -809,7 +728,8 @@ export default function FantasyTeamPage() {
     }
 
     if (
-      selected.length >= 4
+      selected.length >=
+      4
     ) {
       setMessage(
         "You can only select 4 players.",
@@ -855,6 +775,9 @@ export default function FantasyTeamPage() {
     setMessage("");
   }
 
+  /* -------------------------------------------------------
+     REMOVE PLAYER
+  ------------------------------------------------------- */
   function removePlayer(
     playerID: number,
   ) {
@@ -884,6 +807,9 @@ export default function FantasyTeamPage() {
     setMessage("");
   }
 
+  /* -------------------------------------------------------
+     CAPTAIN
+  ------------------------------------------------------- */
   function chooseCaptain(
     playerID: number,
   ) {
@@ -915,23 +841,31 @@ export default function FantasyTeamPage() {
   /* -------------------------------------------------------
      SAVE
   ------------------------------------------------------- */
-  async function saveDay() {
-    if (
-      !fantasyTeam ||
-      !selectedDay
-    ) {
+  async function save() {
+    if (!user) {
+      router.push(
+        "/login",
+      );
       return;
     }
 
-    if (!canEdit) {
+    if (!selectedDay) {
       setMessage(
-        "This day cannot be edited.",
+        "Please select a tournament day.",
+      );
+      return;
+    }
+
+    if (isDayLocked) {
+      setMessage(
+        "This day is already locked.",
       );
       return;
     }
 
     if (
-      selected.length !== 4
+      selected.length !==
+      4
     ) {
       setMessage(
         "You must select exactly 4 players.",
@@ -939,16 +873,19 @@ export default function FantasyTeamPage() {
       return;
     }
 
-    if (isOverBudget) {
+    if (!captain) {
       setMessage(
-        `Your team is over budget: $${totalPrice}/$${TEAM_BUDGET}.`,
+        "Please choose a captain.",
       );
       return;
     }
 
-    if (!captain) {
+    if (
+      totalPrice >
+      TEAM_BUDGET
+    ) {
       setMessage(
-        "You must select a captain before saving your team.",
+        `Your team is over budget: $${totalPrice}/$${TEAM_BUDGET}.`,
       );
       return;
     }
@@ -957,8 +894,28 @@ export default function FantasyTeamPage() {
     setMessage("");
 
     try {
+      let currentFantasyId =
+        fantasyId;
+
+      if (!currentFantasyId) {
+        const created =
+          await api.createFantasy(
+            user.id,
+          );
+
+        const createdTeam =
+          created as FantasyTeamResponse;
+
+        currentFantasyId =
+          createdTeam.id;
+
+        setFantasyId(
+          createdTeam.id,
+        );
+      }
+
       await api.selectPlayers(
-        fantasyTeam.id,
+        currentFantasyId,
         {
           day_id:
             selectedDay.id,
@@ -971,17 +928,30 @@ export default function FantasyTeamPage() {
       );
 
       await api.captain(
-        fantasyTeam.id,
+        currentFantasyId,
         selectedDay.id,
         captain,
       );
 
+      try {
+        const pointsResponse =
+          await api.fantasyPoints(
+            currentFantasyId,
+          );
+
+        setPoints(
+          pointsResponse as FantasyPointsResponse,
+        );
+      } catch {
+        setPoints(null);
+      }
+
       const updatedSelection:
         FantasyDaySelection = {
         id:
-          fantasyTeam.days?.find(
-            (day) =>
-              day.day_id ===
+          daySelections.find(
+            (selection) =>
+              selection.day_id ===
               selectedDay.id,
           )?.id ?? 0,
 
@@ -1001,47 +971,38 @@ export default function FantasyTeamPage() {
           captain,
       };
 
-      setFantasyTeam(
+      setDaySelections(
         (current) => {
-          if (!current) {
-            return current;
-          }
-
-          const currentDays =
-            current.days ?? [];
-
           const exists =
-            currentDays.some(
-              (day) =>
-                day.day_id ===
+            current.some(
+              (selection) =>
+                selection.day_id ===
                 selectedDay.id,
             );
 
-          return {
-            ...current,
+          if (exists) {
+            return current.map(
+              (selection) =>
+                selection.day_id ===
+                selectedDay.id
+                  ? updatedSelection
+                  : selection,
+            );
+          }
 
-            days: exists
-              ? currentDays.map(
-                  (day) =>
-                    day.day_id ===
-                    selectedDay.id
-                      ? updatedSelection
-                      : day,
-                )
-              : [
-                  ...currentDays,
-                  updatedSelection,
-                ],
-          };
+          return [
+            ...current,
+            updatedSelection,
+          ];
         },
       );
 
-      setMessage(
-        "Fantasy team saved successfully.",
+      router.push(
+        `/fantasy-team/${currentFantasyId}`,
       );
-    } catch (err) {
+    } catch (error) {
       setMessage(
-        errorMessage(err),
+        errorMessage(error),
       );
     } finally {
       setSaving(false);
@@ -1058,46 +1019,6 @@ export default function FantasyTeamPage() {
     );
   }
 
-  if (
-    error ||
-    !fantasyTeam
-  ) {
-    return (
-      <main className="min-h-screen bg-background">
-        <div className="mx-auto flex min-h-[70vh] max-w-xl items-center justify-center px-6 text-center">
-          <div>
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-              <Shield className="h-6 w-6 text-muted-foreground" />
-            </div>
-
-            <h1 className="mt-5 text-2xl font-black">
-              Fantasy team not found
-            </h1>
-
-            <p className="mt-2 text-sm text-muted-foreground">
-              {error ||
-                "This fantasy team does not exist."}
-            </p>
-
-            <Link
-              href="/fantasy-team/builder"
-              className="mt-6 inline-flex rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground"
-            >
-              Create your fantasy team
-            </Link>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  const saveDisabled =
-    saving ||
-    !canEdit ||
-    selected.length !== 4 ||
-    isOverBudget ||
-    !captain;
-
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8">
@@ -1108,47 +1029,152 @@ export default function FantasyTeamPage() {
             <div>
               <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-primary">
                 <Shield className="h-4 w-4" />
-                Fantasy Team
+                Fantasy Manager
               </div>
 
               <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
-                {ownerName}
+                Build your fantasy team
               </h1>
 
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                <span>
-                  Fantasy Team #{fantasyTeam.id}
-                </span>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Select 4 players from 4 different teams
+                and choose your captain.
+              </p>
+            </div>
+          </div>
+        </section>
 
-                <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
+        {/* DAY */}
+        <section className="mb-6">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() =>
+                setOpenDayMenu(
+                  (value) => !value,
+                )
+              }
+              className="flex w-full items-center justify-between rounded-2xl border border-border bg-card px-5 py-4 text-left transition hover:border-primary/50 sm:px-6"
+            >
+              {/* LEFT */}
+              <div className="flex min-w-0 items-center gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  {isDayLocked ? (
+                    <Lock className="h-5 w-5" />
+                  ) : (
+                    <Users className="h-5 w-5" />
+                  )}
+                </div>
 
-                <span className="flex items-center gap-1.5">
-                  <Trophy className="h-4 w-4 text-primary" />
-                  {totalPoints} total points
-                </span>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                    Tournament day
+                  </p>
 
-                {!isOwner && (
-                  <>
-                    <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
-                    <span>
-                      View only
-                    </span>
-                  </>
+                  <p className="mt-1 truncate text-base font-black sm:text-lg">
+                    {selectedDay?.name ??
+                      "Select day"}
+                  </p>
+                </div>
+              </div>
+
+              {/* CENTER COUNTDOWN */}
+              <div className="absolute left-1/2 -translate-x-1/2 text-center">
+                <p
+                  className={`font-mono text-2xl font-black tracking-wider sm:text-3xl lg:text-4xl ${
+                    isDayLocked
+                      ? "text-red-500"
+                      : "text-primary"
+                  }`}
+                >
+                  {countdown}
+                </p>
+              </div>
+
+              {/* RIGHT */}
+              <ChevronDown
+                className={`ml-auto h-5 w-5 shrink-0 transition ${
+                  openDayMenu
+                    ? "rotate-180"
+                    : ""
+                }`}
+              />
+            </button>
+
+            {openDayMenu && (
+              <div className="absolute z-40 mt-2 w-full overflow-hidden rounded-2xl border border-border bg-card p-1 shadow-2xl">
+                {days.map(
+                  (day) => {
+                    const locked =
+                      !!day.deadline_at &&
+                      new Date(
+                        day.deadline_at,
+                      ).getTime() <=
+                        Date.now();
+
+                    return (
+                      <button
+                        key={day.id}
+                        type="button"
+                        onClick={() =>
+                          changeDay(
+                            day,
+                          )
+                        }
+                        className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition ${
+                          selectedDay?.id ===
+                          day.id
+                            ? "bg-primary/10 text-primary"
+                            : "hover:bg-muted"
+                        }`}
+                      >
+                        <div>
+                          <p className="text-sm font-bold">
+                            {day.name}
+                          </p>
+
+                          {day.deadline_at && (
+                            <p className="mt-1 text-[10px] text-muted-foreground">
+                              {locked
+                                ? "Locked"
+                                : "Open"}{" "}
+                              ·{" "}
+                              {formatDeadline(
+                                day,
+                              )}
+                            </p>
+                          )}
+                        </div>
+
+                        {locked && (
+                          <Lock className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    );
+                  },
                 )}
               </div>
-            </div>
-
-            {isOwner && (
-              <Link
-                href="/fantasy-team/builder"
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm font-bold transition hover:border-primary/50"
-              >
-                <Edit3 className="h-4 w-4" />
-                Fantasy builder
-              </Link>
             )}
           </div>
         </section>
+
+        {/* LOCK */}
+        {isDayLocked && (
+          <div className="mb-6 flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
+            <Lock className="h-4 w-4 text-muted-foreground" />
+
+            <div>
+              <p className="text-sm font-bold">
+                This day is locked
+              </p>
+
+              <p className="text-xs text-muted-foreground">
+                The deadline has passed. Click a player to
+                view their match stats.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* BUDGET + POINTS */}
         <section className="mb-6 overflow-hidden rounded-2xl border border-border bg-card">
@@ -1215,143 +1241,9 @@ export default function FantasyTeamPage() {
           </div>
         </section>
 
-        {/* DAY */}
-        <section className="mb-6">
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() =>
-                setOpenDayMenu(
-                  (value) => !value,
-                )
-              }
-              className="flex w-full items-center justify-between rounded-2xl border border-border bg-card px-5 py-4 text-left transition hover:border-primary/50 sm:px-6"
-            >
-              {/* LEFT */}
-              <div className="flex min-w-0 items-center gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  {selectedDayLocked ? (
-                    <Lock className="h-5 w-5" />
-                  ) : (
-                    <Users className="h-5 w-5" />
-                  )}
-                </div>
-
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                    Tournament day
-                  </p>
-
-                  <p className="mt-1 truncate text-base font-black sm:text-lg">
-                    {selectedDay?.name ??
-                      "Select day"}
-                  </p>
-                </div>
-              </div>
-
-              {/* CENTER COUNTDOWN */}
-              <div className="absolute left-1/2 -translate-x-1/2 text-center">
-                <p
-                  className={`font-mono text-2xl font-black tracking-wider sm:text-3xl lg:text-4xl ${
-                    selectedDayLocked
-                      ? "text-red-500"
-                      : "text-primary"
-                  }`}
-                >
-                  {countdown}
-                </p>
-              </div>
-
-              {/* RIGHT */}
-              <ChevronDown
-                className={`ml-auto h-5 w-5 shrink-0 transition ${
-                  openDayMenu
-                    ? "rotate-180"
-                    : ""
-                }`}
-              />
-            </button>
-
-            {openDayMenu && (
-              <div className="absolute z-40 mt-2 w-full overflow-hidden rounded-2xl border border-border bg-card p-1 shadow-2xl">
-                {days.map((day) => {
-                  const locked =
-                    !!day.deadline_at &&
-                    new Date(
-                      day.deadline_at,
-                    ).getTime() <=
-                      Date.now();
-
-                  return (
-                    <button
-                      key={day.id}
-                      type="button"
-                      onClick={() =>
-                        changeDay(day)
-                      }
-                      className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition ${
-                        selectedDay?.id ===
-                        day.id
-                          ? "bg-primary/10 text-primary"
-                          : "hover:bg-muted"
-                      }`}
-                    >
-                      <div>
-                        <p className="text-sm font-bold">
-                          {day.name}
-                        </p>
-
-                        {day.deadline_at && (
-                          <p className="mt-1 text-[10px] text-muted-foreground">
-                            {locked
-                              ? "Locked"
-                              : "Open"}{" "}
-                            ·{" "}
-                            {formatDeadline(
-                              day,
-                            )}
-                          </p>
-                        )}
-                      </div>
-
-                      {locked && (
-                        <Lock className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* STATUS */}
-        {selectedDayLocked && (
-          <div className="mb-6 flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
-            <Lock className="h-4 w-4 text-muted-foreground" />
-
-            <div>
-              <p className="text-sm font-bold">
-                This day is locked
-              </p>
-
-              <p className="text-xs text-muted-foreground">
-                The deadline has passed. Your selection can no longer be changed.
-              </p>
-            </div>
-          </div>
-        )}
-
+        {/* MESSAGE */}
         {message && (
-          <div
-            className={`mb-6 rounded-xl border px-4 py-3 text-sm font-semibold ${
-              message
-                .toLowerCase()
-                .includes("successfully")
-                ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-500"
-                : "border-primary/20 bg-primary/5 text-primary"
-            }`}
-          >
+          <div className="mb-6 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm font-semibold text-primary">
             {message}
           </div>
         )}
@@ -1361,6 +1253,8 @@ export default function FantasyTeamPage() {
 
           {/* LEFT: PLAYER LIST */}
           <aside className="border-b border-border p-5 lg:border-b-0 lg:border-r">
+
+            {/* SEARCH */}
             <div className="mb-5">
               <div className="mb-3 flex items-center gap-2">
                 <Search className="h-4 w-4 text-primary" />
@@ -1375,9 +1269,9 @@ export default function FantasyTeamPage() {
 
                 <input
                   type="text"
-                  value={search}
+                  value={playerSearch}
                   onChange={(event) =>
-                    setSearch(
+                    setPlayerSearch(
                       event.target.value,
                     )
                   }
@@ -1516,6 +1410,73 @@ export default function FantasyTeamPage() {
                           sameTeam ||
                           wouldExceedBudget);
 
+                      /*
+                       * Locked day:
+                       * clicking opens player stats instead
+                       * of selecting the player.
+                       */
+                      if (isDayLocked) {
+                        return (
+                          <button
+                            key={player.id}
+                            type="button"
+                            onClick={() =>
+                              openPlayerStats(
+                                player,
+                              )
+                            }
+                            className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+                              isSelected
+                                ? "border-primary bg-primary/10"
+                                : "border-transparent hover:border-border hover:bg-muted/50"
+                            }`}
+                          >
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
+                              <img
+                                src={getTeamLogo(
+                                  player.team_id,
+                                )}
+                                alt={getTeamName(
+                                  player.team_id,
+                                )}
+                                className="h-6 w-6 object-contain"
+                              />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-black">
+                                {player.nickname}
+                              </p>
+
+                              <p className="truncate text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                {getTeamName(
+                                  player.team_id,
+                                )}
+                              </p>
+                            </div>
+
+                            <div className="shrink-0 text-right">
+                              <p className="text-xs font-black">
+                                ${player.price}
+                              </p>
+
+                              <p className="text-[9px] font-bold text-primary">
+                                {getPlayerPoints(
+                                  player.id,
+                                )}{" "}
+                                pts
+                              </p>
+                            </div>
+
+                            {isSelected && (
+                              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                                <Check className="h-3.5 w-3.5" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      }
+
                       return (
                         <button
                           key={player.id}
@@ -1526,7 +1487,7 @@ export default function FantasyTeamPage() {
                             blocked
                           }
                           onClick={() =>
-                            togglePlayer(
+                            selectPlayer(
                               player,
                             )
                           }
@@ -1567,13 +1528,6 @@ export default function FantasyTeamPage() {
                             <p className="text-xs font-black">
                               ${player.price}
                             </p>
-
-                            <p className="text-[9px] font-bold text-primary">
-                              {getPlayerPoints(
-                                player.id,
-                              )}{" "}
-                              pts
-                            </p>
                           </div>
 
                           {isSelected && (
@@ -1602,7 +1556,9 @@ export default function FantasyTeamPage() {
               </h2>
 
               <p className="mt-1 text-xs text-muted-foreground">
-                Click anywhere inside a selected player&apos;s box to make them captain.
+                {isDayLocked
+                  ? "Click a player to view their room stats."
+                  : "Click anywhere inside a selected player&apos;s box to make them captain."}
               </p>
             </div>
 
@@ -1635,6 +1591,73 @@ export default function FantasyTeamPage() {
                   const isCaptain =
                     captain ===
                     player.id;
+
+                  if (isDayLocked) {
+                    return (
+                      <button
+                        key={player.id}
+                        type="button"
+                        onClick={() =>
+                          openPlayerStats(
+                            player,
+                          )
+                        }
+                        className={`flex min-h-[180px] w-full flex-col items-center justify-center rounded-2xl border p-5 text-center transition ${
+                          isCaptain
+                            ? "border-primary bg-primary/10"
+                            : "border-border bg-muted/10 hover:border-primary/50"
+                        }`}
+                      >
+                        <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
+                          <img
+                            src={getTeamLogo(
+                              player.team_id,
+                            )}
+                            alt={getTeamName(
+                              player.team_id,
+                            )}
+                            className="h-10 w-10 object-contain"
+                          />
+                        </div>
+
+                        <p
+                          className={`mt-3 max-w-full truncate text-base font-black ${
+                            isCaptain
+                              ? "text-primary"
+                              : ""
+                          }`}
+                        >
+                          {player.nickname}
+                        </p>
+
+                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {getTeamName(
+                            player.team_id,
+                          )}
+                        </p>
+
+                        <div className="mt-2 flex items-center gap-4">
+                          <span className="text-sm font-black">
+                            ${player.price}
+                          </span>
+
+                          <span className="text-sm font-black text-primary">
+                            {getPlayerPoints(
+                              player.id,
+                            )}{" "}
+                            pts
+                          </span>
+                        </div>
+
+                        {isCaptain && (
+                          <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-primary-foreground">
+                            <Crown className="h-3 w-3" />
+                            Captain
+                          </div>
+                        )}
+                      </button>
+                    );
+                  }
 
                   return (
                     <div
@@ -1710,9 +1733,7 @@ export default function FantasyTeamPage() {
                       {canEdit && (
                         <button
                           type="button"
-                          onClick={(
-                            event,
-                          ) => {
+                          onClick={(event) => {
                             event.stopPropagation();
 
                             removePlayer(
@@ -1761,7 +1782,8 @@ export default function FantasyTeamPage() {
 
                   <p
                     className={`mt-1 text-xl font-black ${
-                      remainingBudget < 0
+                      remainingBudget <
+                      0
                         ? "text-red-500"
                         : "text-primary"
                     }`}
@@ -1779,10 +1801,14 @@ export default function FantasyTeamPage() {
                   <button
                     type="button"
                     onClick={
-                      saveDay
+                      save
                     }
                     disabled={
-                      saveDisabled
+                      saving ||
+                      selected.length !==
+                        4 ||
+                      !captain ||
+                      isOverBudget
                     }
                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-4 text-sm font-black text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                   >
@@ -1793,7 +1819,7 @@ export default function FantasyTeamPage() {
                       </>
                     ) : (
                       <>
-                        <Save className="h-4 w-4" />
+                        <Check className="h-4 w-4" />
                         Save team
                       </>
                     )}
@@ -1810,7 +1836,8 @@ export default function FantasyTeamPage() {
                     4 &&
                     !captain && (
                     <p className="mt-3 text-center text-xs font-bold text-red-500">
-                      Click anywhere on a player&apos;s box to choose your captain.
+                      Click anywhere on a player&apos;s
+                      box to choose your captain.
                     </p>
                   )}
 
@@ -1825,176 +1852,182 @@ export default function FantasyTeamPage() {
             </div>
           </div>
         </section>
+      </div>
 
-        {/* ROOM SCORES */}
-        <section className="mt-10">
-          <div className="mb-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              Match performance
-            </p>
+      {/* ---------------------------------------------------
+          PLAYER STATS CARD
+      --------------------------------------------------- */}
+      {statsPlayer && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onClick={closePlayerStats}
+        >
+          <div
+            className="w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            {/* CARD HEADER */}
+            <div className="flex items-center gap-4 border-b border-border px-5 py-4 sm:px-6">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-background">
+                <img
+                  src={getTeamLogo(
+                    statsPlayer.team_id,
+                  )}
+                  alt={getTeamName(
+                    statsPlayer.team_id,
+                  )}
+                  className="h-8 w-8 object-contain"
+                />
+              </div>
 
-            <h2 className="mt-1 text-2xl font-black">
-              Room scores
-            </h2>
-          </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-lg font-black">
+                  {statsPlayer.nickname}
+                </p>
 
-          {selected.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
-              No players selected for this day.
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  {getTeamName(
+                    statsPlayer.team_id,
+                  )}
+                </p>
+              </div>
+
+              <div className="text-right">
+                <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                  Day points
+                </p>
+
+                <p className="text-xl font-black text-primary">
+                  {getPlayerPoints(
+                    statsPlayer.id,
+                  )}{" "}
+                  pts
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  closePlayerStats
+                }
+                className="ml-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition hover:border-red-500/40 hover:text-red-500"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {selected.map((player) => {
-                const playerScore =
-                  getPlayerScore(
-                    player.id,
-                  );
 
-                const playerPoints =
-                  playerScore?.total_points ??
-                  0;
+            {/* CARD BODY */}
+            {(() => {
+              const playerScore =
+                getPlayerScore(
+                  statsPlayer.id,
+                );
 
+              const rooms =
+                playerScore?.rooms ??
+                [];
+
+              if (rooms.length === 0) {
                 return (
-                  <div
-                    key={player.id}
-                    className="overflow-hidden rounded-2xl border border-border bg-card"
-                  >
-                    <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-                      <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-border bg-muted">
-                        <img
-                          src={getTeamLogo(
-                            player.team_id,
-                          )}
-                          alt={getTeamName(
-                            player.team_id,
-                          )}
-                          className="h-6 w-6 object-contain"
-                        />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-black">
-                          {player.nickname}
-                        </p>
-
-                        <p className="text-[9px] uppercase text-muted-foreground">
-                          {getTeamName(
-                            player.team_id,
-                          )}
-                        </p>
-                      </div>
-
-                      {captain ===
-                        player.id && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[9px] font-black uppercase text-primary">
-                          <Crown className="h-3 w-3" />
-                          Captain
-                        </span>
-                      )}
-
-                      <span className="text-lg font-black text-primary">
-                        {playerPoints}
-                      </span>
-                    </div>
-
-                    {playerScore?.rooms &&
-                    playerScore.rooms.length >
-                      0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="w-full min-w-[620px] text-left text-xs">
-                          <thead className="border-b border-border bg-muted/30">
-                            <tr>
-                              <th className="px-4 py-3 font-bold text-muted-foreground">
-                                Room
-                              </th>
-
-                              <th className="px-4 py-3 font-bold text-muted-foreground">
-                                Kills
-                              </th>
-
-                              <th className="px-4 py-3 font-bold text-muted-foreground">
-                                Assists
-                              </th>
-
-                              <th className="px-4 py-3 font-bold text-muted-foreground">
-                                First Blood
-                              </th>
-
-                              <th className="px-4 py-3 font-bold text-muted-foreground">
-                                Placement
-                              </th>
-
-                              <th className="px-4 py-3 font-bold text-muted-foreground">
-                                Points
-                              </th>
-                            </tr>
-                          </thead>
-
-                          <tbody className="divide-y divide-border">
-                            {playerScore.rooms.map(
-                              (
-                                room,
-                                index,
-                              ) => (
-                                <tr
-                                  key={`${room.room_id}-${index}`}
-                                >
-                                  <td className="px-4 py-3 font-bold">
-                                    Room{" "}
-                                    {
-                                      room.room_id
-                                    }
-                                  </td>
-
-                                  <td className="px-4 py-3">
-                                    {
-                                      room.kills
-                                    }
-                                  </td>
-
-                                  <td className="px-4 py-3">
-                                    {
-                                      room.assists
-                                    }
-                                  </td>
-
-                                  <td className="px-4 py-3">
-                                    {
-                                      room.first_blood
-                                        ? "Yes"
-                                        : "No"
-                                    }
-                                  </td>
-
-                                  <td className="px-4 py-3">
-                                    {
-                                      room.placement
-                                    }
-                                  </td>
-
-                                  <td className="px-4 py-3 font-black text-primary">
-                                    {
-                                      room.points
-                                    }
-                                  </td>
-                                </tr>
-                              ),
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <div className="px-4 py-5 text-xs text-muted-foreground">
-                        No room score data available yet.
-                      </div>
-                    )}
+                  <div className="px-6 py-10 text-center text-sm text-muted-foreground">
+                    No room statistics are available
+                    for this player yet.
                   </div>
                 );
-              })}
-            </div>
-          )}
-        </section>
-      </div>
+              }
+
+              return (
+                <div className="max-h-[70vh] overflow-y-auto">
+                  <div className="divide-y divide-border">
+                    {rooms.map(
+                      (
+                        room,
+                        index,
+                      ) => {
+                        const roomNumber =
+                          room.room_number ??
+                          room.room_id;
+
+                        return (
+                          <div
+                            key={`${room.room_id}-${index}`}
+                            className="flex flex-wrap items-center gap-4 px-5 py-4 sm:px-6"
+                          >
+                            {/* ROOM */}
+                            <div className="min-w-[90px]">
+                              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                                Room
+                              </p>
+
+                              <p className="mt-1 text-sm font-black">
+                                {roomNumber}
+                              </p>
+                            </div>
+
+                            {/* KILLS */}
+                            <div className="min-w-[70px]">
+                              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                                Kills
+                              </p>
+
+                              <p className="mt-1 text-sm font-black">
+                                {room.kills}
+                              </p>
+                            </div>
+
+                            {/* FIRST BLOOD */}
+                            <div className="min-w-[110px]">
+                              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                                First Blood
+                              </p>
+
+                              <p
+                                className={`mt-1 text-sm font-black ${
+                                  room.first_blood
+                                    ? "text-primary"
+                                    : "text-muted-foreground"
+                                }`}
+                              >
+                                {room.first_blood
+                                  ? "Yes"
+                                  : "—"}
+                              </p>
+                            </div>
+
+                            {/* PLACEMENT */}
+                            <div className="min-w-[90px]">
+                              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                                Placement
+                              </p>
+
+                              <p className="mt-1 text-sm font-black">
+                                {room.placement}
+                              </p>
+                            </div>
+
+                            {/* POINTS */}
+                            <div className="ml-auto min-w-[70px] text-right">
+                              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                                Points
+                              </p>
+
+                              <p className="mt-1 text-sm font-black text-primary">
+                                {room.points}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      },
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
