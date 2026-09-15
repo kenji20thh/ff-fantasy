@@ -18,6 +18,8 @@ export type Player = {
   team_id: number
   nickname: string
   picture_url?: string
+    price: number
+
 }
 
 export type TournamentDay = {
