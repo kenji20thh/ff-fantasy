@@ -322,16 +322,20 @@ func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Reque
 	ctx := context.Background()
 
 	var fantasyTeam models.FantasyTeam
+	var ownerUsername string
 
 	err := h.DB.QueryRow(
 		ctx,
-		`SELECT id, user_id
-		 FROM fantasy_teams
-		 WHERE id = $1`,
+		`SELECT ft.id, ft.user_id, u.username
+		 FROM fantasy_teams ft
+		 JOIN users u
+			ON u.id = ft.user_id
+		 WHERE ft.id = $1`,
 		fantasyTeamID,
 	).Scan(
 		&fantasyTeam.ID,
 		&fantasyTeam.UserID,
+		&ownerUsername,
 	)
 
 	if err != nil {
@@ -456,6 +460,7 @@ func (h *FantasyTeamHandler) GetFantasyTeam(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"id":                fantasyTeam.ID,
 		"user_id":           fantasyTeam.UserID,
+		"username":          ownerUsername,
 		"day_id":            currentDayID,
 		"player_ids":        currentPlayerIDs,
 		"captain_player_id": currentCaptain,
