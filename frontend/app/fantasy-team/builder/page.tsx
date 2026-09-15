@@ -8,12 +8,9 @@ import {
   Crown,
   Loader2,
   Lock,
-  Plus,
   Search,
-  Shield,
   Sparkles,
   Users,
-  X,
 } from "lucide-react";
 
 import { api } from "@/lib/api";
@@ -85,11 +82,13 @@ export default function FantasyTeamBuilderPage() {
   const [selected, setSelected] = useState<Player[]>([]);
   const [captain, setCaptain] = useState<number | null>(null);
 
-  const [daySelections, setDaySelections] = useState<FantasyDaySelection[]>(
-    [],
-  );
-
+  const [daySelections, setDaySelections] = useState<FantasyDaySelection[]>([]);
   const [fantasyId, setFantasyId] = useState<number | null>(null);
+
+  const [playerSearch, setPlayerSearch] = useState("");
+  const [selectedTeamFilter, setSelectedTeamFilter] = useState<number | null>(
+    null,
+  );
 
   const [loading, setLoading] = useState(true);
   const [loadingDay, setLoadingDay] = useState(false);
@@ -97,11 +96,6 @@ export default function FantasyTeamBuilderPage() {
 
   const [message, setMessage] = useState("");
   const [openDayMenu, setOpenDayMenu] = useState(false);
-
-  const [playerSearch, setPlayerSearch] = useState("");
-  const [selectedTeamFilter, setSelectedTeamFilter] = useState<number | null>(
-    null,
-  );
 
   const isDayLocked = useMemo(() => {
     if (!selectedDay?.deadline_at) {
@@ -117,52 +111,41 @@ export default function FantasyTeamBuilderPage() {
 
   const remainingBudget = TEAM_BUDGET - totalPrice;
 
-  const budgetPercentage = Math.min(
-    100,
-    Math.max(0, (totalPrice / TEAM_BUDGET) * 100),
-  );
-
-  const totalPoints = useMemo(() => {
-    return selected.reduce((total, player) => {
-      return total + 0;
-    }, 0);
-  }, [selected]);
-
   const selectedPlayerIDs = useMemo(() => {
     return new Set(selected.map((player) => player.id));
   }, [selected]);
 
-  const participatingTeamIDs = useMemo(() => {
+  const participatingTeams = useMemo(() => {
     if (!selectedDay) {
       return [];
     }
 
-    return getParticipatingTeamIDs(selectedDay);
-  }, [selectedDay]);
+    const teamIDs = getParticipatingTeamIDs(selectedDay);
 
-  const participatingTeams = useMemo(() => {
-    if (participatingTeamIDs.length === 0) {
+    if (teamIDs.length === 0) {
       return allTeams;
     }
 
-    return allTeams.filter((team) =>
-      participatingTeamIDs.includes(team.id),
-    );
-  }, [allTeams, participatingTeamIDs]);
+    return allTeams.filter((team) => teamIDs.includes(team.id));
+  }, [selectedDay, allTeams]);
 
   const filteredPlayers = useMemo(() => {
     const query = playerSearch.trim().toLowerCase();
 
-    return players
+    return [...players]
       .filter((player) => {
-        const matchesSearch =
-          !query || player.nickname.toLowerCase().includes(query);
+        if (
+          selectedTeamFilter !== null &&
+          player.team_id !== selectedTeamFilter
+        ) {
+          return false;
+        }
 
-        const matchesTeam =
-          selectedTeamFilter === null ||
-          player.team_id === selectedTeamFilter;
+        if (query && !player.nickname.toLowerCase().includes(query)) {
+          return false;
+        }
 
-        return matchesSearch && matchesTeam;
+        return true;
       })
       .sort((a, b) => {
         if (b.price !== a.price) {
@@ -266,13 +249,11 @@ export default function FantasyTeamBuilderPage() {
     setMessage("");
 
     try {
-      const [daysResponse, teamsResponse, fantasyResponse] = await Promise.all(
-        [
-          api.days(),
-          api.teams(),
-          api.myFantasyTeam().catch(() => null),
-        ],
-      );
+      const [daysResponse, teamsResponse, fantasyResponse] = await Promise.all([
+        api.days(),
+        api.teams(),
+        api.myFantasyTeam().catch(() => null),
+      ]);
 
       const loadedDays =
         asArray<TournamentDay>(daysResponse).sort(sortDaysByWeekDay);
@@ -325,8 +306,6 @@ export default function FantasyTeamBuilderPage() {
 
     setSelectedDay(day);
     setOpenDayMenu(false);
-    setPlayerSearch("");
-    setSelectedTeamFilter(null);
 
     const localSelection = daySelections.find(
       (selection) => selection.day_id === day.id,
@@ -389,42 +368,25 @@ export default function FantasyTeamBuilderPage() {
 
     if (newTotal > TEAM_BUDGET) {
       setMessage(
-        `You cannot select ${player.nickname}. Your budget would be ${newTotal}/${TEAM_BUDGET}.`,
+        `You cannot select ${player.nickname}. Your budget would be $${newTotal}/$${TEAM_BUDGET}.`,
       );
       return;
     }
 
     setSelected((current) => [...current, player]);
     setMessage("");
+
+    if (selected.length + 1 === 4) {
+      setMessage("Your squad is complete. Click a player's name to make them captain.");
+    }
   }
 
-  function selectCaptain(player: Player) {
-    if (isDayLocked || saving) {
+  function chooseCaptain(playerID: number) {
+    if (isDayLocked || saving || !selectedPlayerIDs.has(playerID)) {
       return;
     }
 
-    if (!selectedPlayerIDs.has(player.id)) {
-      setMessage("Select this player first, then click their name to make them captain.");
-      return;
-    }
-
-    setCaptain(player.id);
-    setMessage("");
-  }
-
-  function removePlayer(playerID: number) {
-    if (isDayLocked || saving) {
-      return;
-    }
-
-    setSelected((current) =>
-      current.filter((player) => player.id !== playerID),
-    );
-
-    if (captain === playerID) {
-      setCaptain(null);
-    }
-
+    setCaptain(playerID);
     setMessage("");
   }
 
@@ -445,22 +407,18 @@ export default function FantasyTeamBuilderPage() {
     }
 
     if (selected.length !== 4) {
-      setMessage(
-        `You need exactly 4 players to save. You currently have ${selected.length}/4.`,
-      );
+      setMessage("You must select exactly 4 players before saving.");
       return;
     }
 
     if (!captain) {
-      setMessage(
-        "You need to choose a captain. Click the name of one of your selected players.",
-      );
+      setMessage("You must choose a captain by clicking one of the selected player's names.");
       return;
     }
 
     if (totalPrice > TEAM_BUDGET) {
       setMessage(
-        `Your team is over budget: ${totalPrice}/${TEAM_BUDGET}. Remove a player before saving.`,
+        `Your team is over budget: $${totalPrice}/$${TEAM_BUDGET}.`,
       );
       return;
     }
@@ -520,6 +478,13 @@ export default function FantasyTeamBuilderPage() {
     }
   }
 
+  const saveDisabled =
+    saving ||
+    isDayLocked ||
+    selected.length !== 4 ||
+    !captain ||
+    totalPrice > TEAM_BUDGET;
+
   if (loading) {
     return (
       <main className="min-h-screen bg-background">
@@ -530,34 +495,27 @@ export default function FantasyTeamBuilderPage() {
     );
   }
 
-  const budgetIsValid = totalPrice <= TEAM_BUDGET;
-  const squadIsComplete = selected.length === 4;
-  const captainIsSelected = captain !== null;
-
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* HEADER */}
-        <section className="mb-8">
+        {/* Header */}
+        <section className="mb-6">
           <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-primary">
             <Sparkles className="h-4 w-4" />
             Fantasy Manager
           </div>
 
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
-                Build your fantasy squad
+                Build your fantasy team
               </h1>
 
-              <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
-                Pick four players from four different teams, stay within the
-                100-credit budget, then click a selected player's name to make
-                them captain.
+              <p className="mt-2 text-sm text-muted-foreground">
+                Select 4 players from 4 different teams and choose your captain.
               </p>
             </div>
 
-            {/* DAY SELECTOR */}
             <div className="relative">
               <button
                 type="button"
@@ -582,7 +540,7 @@ export default function FantasyTeamBuilderPage() {
               </button>
 
               {openDayMenu && (
-                <div className="absolute right-0 z-30 mt-2 w-full min-w-[260px] overflow-hidden rounded-xl border border-border bg-card p-1 shadow-xl">
+                <div className="absolute right-0 z-40 mt-2 w-full min-w-[270px] overflow-hidden rounded-xl border border-border bg-card p-1 shadow-xl">
                   {days.map((day) => {
                     const locked =
                       !!day.deadline_at &&
@@ -621,168 +579,75 @@ export default function FantasyTeamBuilderPage() {
           </div>
         </section>
 
-        {/* LOCKED DAY */}
         {isDayLocked && (
           <div className="mb-6 flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm">
-            <Lock className="h-4 w-4 text-muted-foreground" />
+            <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
 
             <div>
               <p className="font-semibold">This day is locked</p>
               <p className="text-xs text-muted-foreground">
-                The deadline has passed. Your selection can no longer be
-                changed.
+                The deadline has passed. Your selection can no longer be changed.
               </p>
             </div>
           </div>
         )}
 
-        {/* MESSAGE */}
+        {/* Budget / Points */}
+        <section className="mb-6 overflow-hidden rounded-2xl border border-border bg-card">
+          <div className="grid grid-cols-2 divide-x divide-border">
+            <div className="p-5 text-center sm:p-6">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                Budget
+              </p>
+
+              <p
+                className={`mt-2 text-3xl font-black sm:text-4xl ${
+                  totalPrice > TEAM_BUDGET
+                    ? "text-red-500"
+                    : "text-foreground"
+                }`}
+              >
+                ${totalPrice}
+                <span className="text-base font-bold text-muted-foreground">
+                  {" "}
+                  / ${TEAM_BUDGET}
+                </span>
+              </p>
+            </div>
+
+            <div className="p-5 text-center sm:p-6">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                Points
+              </p>
+
+              <p className="mt-2 text-3xl font-black sm:text-4xl">
+                —{" "}
+                <span className="text-base font-bold text-muted-foreground">
+                  pts
+                </span>
+              </p>
+            </div>
+          </div>
+        </section>
+
         {message && (
           <div className="mb-6 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">
             {message}
           </div>
         )}
 
-        {/* TOP STATS */}
-        <section className="mb-6 grid gap-4 sm:grid-cols-3">
-          {/* BUDGET */}
-          <div
-            className={`rounded-2xl border bg-card p-5 transition ${
-              budgetIsValid
-                ? "border-emerald-500/30"
-                : "border-red-500/40 bg-red-500/5"
-            }`}
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                  Budget
-                </p>
-
-                <p
-                  className={`mt-1 text-3xl font-black ${
-                    budgetIsValid ? "text-emerald-500" : "text-red-500"
-                  }`}
-                >
-                  {totalPrice}
-                  <span className="text-base font-bold text-muted-foreground">
-                    {" "}
-                    / {TEAM_BUDGET}
-                  </span>
-                </p>
+        {/* Main builder */}
+        <section className="grid overflow-hidden rounded-2xl border border-border bg-card lg:grid-cols-[280px_1fr]">
+          {/* Sidebar */}
+          <aside className="border-b border-border bg-muted/10 p-5 lg:border-b-0 lg:border-r">
+            <div className="mb-5">
+              <div className="mb-2 flex items-center gap-2">
+                <Search className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-black uppercase tracking-wide">
+                  Search players
+                </h2>
               </div>
 
-              <div
-                className={`rounded-xl p-2 ${
-                  budgetIsValid
-                    ? "bg-emerald-500/10 text-emerald-500"
-                    : "bg-red-500/10 text-red-500"
-                }`}
-              >
-                <Shield className="h-5 w-5" />
-              </div>
-            </div>
-
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  budgetIsValid ? "bg-emerald-500" : "bg-red-500"
-                }`}
-                style={{ width: `${budgetPercentage}%` }}
-              />
-            </div>
-
-            <p
-              className={`mt-2 text-xs font-semibold ${
-                budgetIsValid ? "text-emerald-500" : "text-red-500"
-              }`}
-            >
-              {budgetIsValid
-                ? `${remainingBudget} credits remaining`
-                : `${Math.abs(remainingBudget)} credits over budget`}
-            </p>
-          </div>
-
-          {/* POINTS */}
-          <div className="rounded-2xl border border-border bg-card p-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                  Points
-                </p>
-
-                <p className="mt-1 text-3xl font-black">
-                  {totalPoints}
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-primary/10 p-2 text-primary">
-                <Sparkles className="h-5 w-5" />
-              </div>
-            </div>
-
-            <p className="mt-4 text-xs text-muted-foreground">
-              Current fantasy points for this squad.
-            </p>
-          </div>
-
-          {/* SQUAD */}
-          <div className="rounded-2xl border border-border bg-card p-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                  Squad
-                </p>
-
-                <p className="mt-1 text-3xl font-black">
-                  {selected.length}
-                  <span className="text-base font-bold text-muted-foreground">
-                    {" "}
-                    / 4
-                  </span>
-                </p>
-              </div>
-
-              <div
-                className={`rounded-xl p-2 ${
-                  squadIsComplete
-                    ? "bg-emerald-500/10 text-emerald-500"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                <Users className="h-5 w-5" />
-              </div>
-            </div>
-
-            <p className="mt-4 text-xs text-muted-foreground">
-              {squadIsComplete
-                ? captainIsSelected
-                  ? "Squad complete and captain selected."
-                  : "Squad complete — choose your captain."
-                : `${4 - selected.length} player${
-                    4 - selected.length === 1 ? "" : "s"
-                  } still needed.`}
-            </p>
-          </div>
-        </section>
-
-        {/* BUILDER */}
-        <div className="grid gap-6 lg:grid-cols-[32%_1fr]">
-          {/* LEFT FILTER SIDEBAR */}
-          <aside className="lg:sticky lg:top-6 lg:self-start">
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <div className="mb-5">
-                <div className="flex items-center gap-2">
-                  <Search className="h-5 w-5 text-primary" />
-                  <h2 className="text-lg font-black">Find players</h2>
-                </div>
-
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Search players or filter by team.
-                </p>
-              </div>
-
-              {/* SEARCH */}
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 
@@ -790,305 +655,143 @@ export default function FantasyTeamBuilderPage() {
                   type="text"
                   value={playerSearch}
                   onChange={(event) => setPlayerSearch(event.target.value)}
-                  placeholder="Search player..."
-                  disabled={isDayLocked || loadingDay}
-                  className="w-full rounded-xl border border-border bg-background py-3 pl-10 pr-10 text-sm outline-none transition placeholder:text-muted-foreground focus:border-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Player name..."
+                  className="w-full rounded-xl border border-border bg-background py-3 pl-10 pr-3 text-sm outline-none transition placeholder:text-muted-foreground focus:border-primary"
                 />
-
-                {playerSearch && (
-                  <button
-                    type="button"
-                    onClick={() => setPlayerSearch("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
               </div>
-
-              {/* TEAM FILTER */}
-              <div className="mt-6">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                    Select by team
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTeamFilter(null)}
-                    className={`text-[10px] font-bold uppercase tracking-wider transition ${
-                      selectedTeamFilter === null
-                        ? "text-primary"
-                        : "text-muted-foreground hover:text-primary"
-                    }`}
-                  >
-                    All
-                  </button>
-                </div>
-
-                <div className="max-h-[420px] space-y-1 overflow-y-auto pr-1">
-                  {participatingTeams.map((team) => {
-                    const teamSelectedPlayers = selected.filter(
-                      (player) => player.team_id === team.id,
-                    ).length;
-
-                    const active = selectedTeamFilter === team.id;
-
-                    return (
-                      <button
-                        key={team.id}
-                        type="button"
-                        onClick={() =>
-                          setSelectedTeamFilter((current) =>
-                            current === team.id ? null : team.id,
-                          )
-                        }
-                        className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
-                          active
-                            ? "border-primary bg-primary/10"
-                            : "border-transparent hover:border-border hover:bg-muted/50"
-                        }`}
-                      >
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
-                          <img
-                            src={getTeamLogo(team.id)}
-                            alt={team.name}
-                            className="h-6 w-6 object-contain"
-                          />
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className={`truncate text-xs font-bold ${
-                              active ? "text-primary" : ""
-                            }`}
-                          >
-                            {team.name}
-                          </p>
-
-                          <p className="text-[9px] uppercase tracking-wider text-muted-foreground">
-                            {teamSelectedPlayers > 0
-                              ? `${teamSelectedPlayers} selected`
-                              : "No player selected"}
-                          </p>
-                        </div>
-
-                        {teamSelectedPlayers > 0 && (
-                          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-black text-primary-foreground">
-                            {teamSelectedPlayers}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* SELECTED SQUAD */}
-              <div className="mt-6 border-t border-border pt-5">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                    Your squad
-                  </p>
-
-                  <span className="text-xs font-black text-primary">
-                    {selected.length}/4
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  {[0, 1, 2, 3].map((index) => {
-                    const player = selected[index];
-
-                    if (!player) {
-                      return (
-                        <div
-                          key={index}
-                          className="flex items-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 px-3 py-2.5"
-                        >
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted-foreground">
-                            <Plus className="h-3.5 w-3.5" />
-                          </div>
-
-                          <span className="text-xs font-semibold text-muted-foreground">
-                            Empty slot
-                          </span>
-                        </div>
-                      );
-                    }
-
-                    const isCaptain = captain === player.id;
-
-                    return (
-                      <div
-                        key={player.id}
-                        className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${
-                          isCaptain
-                            ? "border-primary bg-primary/10"
-                            : "border-border bg-muted/20"
-                        }`}
-                      >
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
-                          <img
-                            src={getTeamLogo(player.team_id)}
-                            alt={getTeamName(player.team_id)}
-                            className="h-5 w-5 object-contain"
-                          />
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-bold">
-                            {player.nickname}
-                          </p>
-
-                          <p className="text-[9px] uppercase text-muted-foreground">
-                            {player.price} CR
-                          </p>
-                        </div>
-
-                        {isCaptain && (
-                          <Crown className="h-4 w-4 shrink-0 text-primary" />
-                        )}
-
-                        {!isDayLocked && (
-                          <button
-                            type="button"
-                            onClick={() => removePlayer(player.id)}
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-red-500/10 hover:text-red-500"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
-                  Click a selected player's <strong>name</strong> on the right
-                  to make them captain.
-                </p>
-              </div>
-
-              {/* SAVE */}
-              <button
-                type="button"
-                onClick={save}
-                disabled={
-                  saving ||
-                  isDayLocked ||
-                  selected.length !== 4 ||
-                  !captain ||
-                  totalPrice > TEAM_BUDGET
-                }
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-black text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-4 w-4" />
-                    Save fantasy team
-                  </>
-                )}
-              </button>
-
-              {/* SAVE REQUIREMENTS */}
-              {!isDayLocked && (
-                <div className="mt-4 space-y-1.5">
-                  <div
-                    className={`flex items-center gap-2 text-[10px] font-semibold ${
-                      squadIsComplete
-                        ? "text-emerald-500"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    <Check className="h-3 w-3" />
-                    Exactly 4 players
-                  </div>
-
-                  <div
-                    className={`flex items-center gap-2 text-[10px] font-semibold ${
-                      budgetIsValid
-                        ? "text-emerald-500"
-                        : "text-red-500"
-                    }`}
-                  >
-                    <Check className="h-3 w-3" />
-                    Within 100-credit budget
-                  </div>
-
-                  <div
-                    className={`flex items-center gap-2 text-[10px] font-semibold ${
-                      captainIsSelected
-                        ? "text-emerald-500"
-                        : "text-muted-foreground"
-                    }`}
-                  >
-                    <Check className="h-3 w-3" />
-                    Captain selected
-                  </div>
-                </div>
-              )}
             </div>
-          </aside>
 
-          {/* PLAYER LIST */}
-          <section className="min-w-0">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Users className="h-5 w-5 text-primary" />
-                  <h2 className="text-xl font-bold">Players</h2>
-                </div>
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-black uppercase tracking-wide">
+                  Select by team
+                </h2>
 
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Click a player to select them. Click their name to make them
-                  captain.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
                 {selectedTeamFilter !== null && (
                   <button
                     type="button"
                     onClick={() => setSelectedTeamFilter(null)}
-                    className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[10px] font-bold text-primary"
+                    className="text-[10px] font-bold uppercase tracking-wider text-primary"
                   >
-                    {getTeamName(selectedTeamFilter)}
+                    Clear
                   </button>
                 )}
+              </div>
 
-                <span className="rounded-full border border-border bg-card px-3 py-1 text-xs font-bold">
-                  {filteredPlayers.length} player
-                  {filteredPlayers.length === 1 ? "" : "s"}
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTeamFilter(null)}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                    selectedTeamFilter === null
+                      ? "bg-primary/10 text-primary"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-[10px] font-black">
+                    ALL
+                  </div>
+
+                  <span className="font-semibold">All teams</span>
+                </button>
+
+                {participatingTeams.map((team) => {
+                  const active = selectedTeamFilter === team.id;
+
+                  return (
+                    <button
+                      key={team.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedTeamFilter(active ? null : team.id)
+                      }
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                        active
+                          ? "bg-primary/10 text-primary"
+                          : "hover:bg-muted"
+                      }`}
+                    >
+                      <div
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-background ${
+                          active
+                            ? "border-primary"
+                            : "border-border"
+                        }`}
+                      >
+                        <img
+                          src={getTeamLogo(team.id)}
+                          alt={team.name}
+                          className="h-6 w-6 object-contain"
+                        />
+                      </div>
+
+                      <span className="truncate text-xs font-bold">
+                        {team.name}
+                      </span>
+
+                      {active && (
+                        <Check className="ml-auto h-4 w-4 shrink-0 text-primary" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-xl border border-border bg-background p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Selected
                 </span>
+
+                <span className="text-sm font-black">
+                  {selected.length} / 4
+                </span>
+              </div>
+
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{
+                    width: `${Math.min(100, (selected.length / 4) * 100)}%`,
+                  }}
+                />
+              </div>
+            </div>
+          </aside>
+
+          {/* Players */}
+          <div className="min-w-0 p-5 sm:p-6">
+            <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  <h2 className="text-xl font-black">Select players</h2>
+                </div>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Click a player to select them. After selecting them, click
+                  their name to make them captain.
+                </p>
+              </div>
+
+              <div className="text-xs font-bold text-muted-foreground">
+                {filteredPlayers.length} players
               </div>
             </div>
 
             {loadingDay ? (
-              <div className="flex min-h-[500px] items-center justify-center rounded-2xl border border-border bg-card">
+              <div className="flex min-h-[420px] items-center justify-center rounded-2xl border border-border bg-background">
                 <Loader2 className="h-7 w-7 animate-spin text-primary" />
               </div>
             ) : filteredPlayers.length === 0 ? (
-              <div className="flex min-h-[400px] flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card px-6 text-center">
-                <Search className="h-8 w-8 text-muted-foreground" />
-
-                <p className="mt-3 text-sm font-bold">
-                  No players found
-                </p>
-
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Try another search or team filter.
-                </p>
+              <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-dashed border-border bg-background text-sm text-muted-foreground">
+                No players found.
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {filteredPlayers.map((player) => {
-                  const selectedPlayer = selectedPlayerIDs.has(player.id);
+                  const isSelected = selectedPlayerIDs.has(player.id);
                   const isCaptain = captain === player.id;
 
                   const sameTeam = selected.some(
@@ -1101,7 +804,7 @@ export default function FantasyTeamBuilderPage() {
                   const disabled =
                     isDayLocked ||
                     saving ||
-                    (!selectedPlayer &&
+                    (!isSelected &&
                       (selected.length >= 4 ||
                         sameTeam ||
                         wouldExceedBudget));
@@ -1109,167 +812,186 @@ export default function FantasyTeamBuilderPage() {
                   return (
                     <div
                       key={player.id}
-                      role="button"
-                      tabIndex={disabled ? -1 : 0}
-                      onClick={() => {
-                        if (!disabled) {
-                          togglePlayer(player);
-                        }
-                      }}
-                      onKeyDown={(event) => {
-                        if (
-                          !disabled &&
-                          (event.key === "Enter" || event.key === " ")
-                        ) {
-                          event.preventDefault();
-                          togglePlayer(player);
-                        }
-                      }}
-                      className={`group relative overflow-hidden rounded-2xl border bg-card text-left transition ${
-                        selectedPlayer
-                          ? "border-primary shadow-sm shadow-primary/10"
+                      className={`rounded-2xl border transition ${
+                        isSelected
+                          ? isCaptain
+                            ? "border-primary bg-primary/10"
+                            : "border-primary/50 bg-primary/5"
                           : disabled
-                            ? "cursor-not-allowed opacity-45"
-                            : "border-border hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md"
+                            ? "border-border bg-muted/20 opacity-45"
+                            : "border-border bg-background hover:border-primary/40"
                       }`}
                     >
-                      {/* SELECTED INDICATOR */}
-                      {selectedPlayer && (
-                        <div className="absolute left-0 top-0 h-full w-1 bg-primary" />
-                      )}
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => togglePlayer(player)}
+                        className="flex w-full items-center gap-3 p-4 text-left"
+                      >
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-border bg-card">
+                          <img
+                            src={getTeamLogo(player.team_id)}
+                            alt={getTeamName(player.team_id)}
+                            className="h-8 w-8 object-contain"
+                          />
+                        </div>
 
-                      <div className="p-4">
-                        <div className="flex items-center gap-3">
-                          {/* TEAM LOGO */}
-                          <div
-                            className={`flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-muted ${
-                              selectedPlayer
-                                ? "border-primary/30"
-                                : "border-border"
-                            }`}
-                          >
-                            <img
-                              src={getTeamLogo(player.team_id)}
-                              alt={getTeamName(player.team_id)}
-                              className="h-9 w-9 object-contain"
-                            />
-                          </div>
-
-                          {/* PLAYER INFO */}
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                disabled={!selectedPlayer || isDayLocked || saving}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            {isSelected ? (
+                              <span
+                                role="button"
+                                tabIndex={isDayLocked || saving ? -1 : 0}
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  selectCaptain(player);
+
+                                  if (!isDayLocked && !saving) {
+                                    chooseCaptain(player.id);
+                                  }
                                 }}
-                                className={`truncate text-left text-sm font-black transition ${
+                                onKeyDown={(event) => {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+
+                                    if (!isDayLocked && !saving) {
+                                      chooseCaptain(player.id);
+                                    }
+                                  }
+                                }}
+                                className={`truncate text-sm font-black underline-offset-2 hover:underline ${
                                   isCaptain
                                     ? "text-primary"
-                                    : selectedPlayer
-                                      ? "cursor-pointer hover:text-primary"
-                                      : "cursor-default"
+                                    : "text-foreground"
                                 }`}
-                                title={
-                                  selectedPlayer
-                                    ? "Click to make captain"
-                                    : "Select this player first"
-                                }
+                                title="Click name to choose captain"
                               >
                                 {player.nickname}
-                              </button>
-
-                              {isCaptain && (
-                                <Crown className="h-4 w-4 shrink-0 text-primary" />
-                              )}
-                            </div>
-
-                            <p className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                              {getTeamName(player.team_id)}
-                            </p>
-                          </div>
-
-                          {/* PRICE */}
-                          <div className="shrink-0 text-right">
-                            <p
-                              className={`text-lg font-black ${
-                                selectedPlayer
-                                  ? "text-primary"
-                                  : "text-foreground"
-                              }`}
-                            >
-                              {player.price}
-                            </p>
-
-                            <p className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">
-                              Credits
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {selectedPlayer ? (
-                              <span
-                                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider ${
-                                  isCaptain
-                                    ? "bg-primary text-primary-foreground"
-                                    : "bg-primary/10 text-primary"
-                                }`}
-                              >
-                                {isCaptain ? (
-                                  <>
-                                    <Crown className="h-3 w-3" />
-                                    Captain
-                                  </>
-                                ) : (
-                                  <>
-                                    <Check className="h-3 w-3" />
-                                    Selected
-                                  </>
-                                )}
-                              </span>
-                            ) : sameTeam ? (
-                              <span className="text-[9px] font-semibold text-muted-foreground">
-                                Another player from this team is selected
-                              </span>
-                            ) : wouldExceedBudget ? (
-                              <span className="text-[9px] font-semibold text-red-500">
-                                Over budget
                               </span>
                             ) : (
-                              <span className="text-[9px] font-semibold text-muted-foreground">
-                                Click card to select
+                              <span className="truncate text-sm font-black">
+                                {player.nickname}
                               </span>
+                            )}
+
+                            {isCaptain && (
+                              <Crown className="h-3.5 w-3.5 shrink-0 text-primary" />
                             )}
                           </div>
 
-                          <div
-                            className={`flex h-8 w-8 items-center justify-center rounded-full border transition ${
-                              selectedPlayer
-                                ? "border-primary bg-primary text-primary-foreground"
-                                : disabled
-                                  ? "border-border bg-muted"
-                                  : "border-border bg-background group-hover:border-primary group-hover:text-primary"
+                          <p className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            {getTeamName(player.team_id)}
+                          </p>
+                        </div>
+
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          <span
+                            className={`text-sm font-black ${
+                              isSelected
+                                ? "text-primary"
+                                : "text-foreground"
                             }`}
                           >
-                            {selectedPlayer ? (
+                            ${player.price}
+                          </span>
+
+                          <div
+                            className={`flex h-7 w-7 items-center justify-center rounded-full border ${
+                              isSelected
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-card"
+                            }`}
+                          >
+                            {isSelected ? (
                               <Check className="h-4 w-4" />
                             ) : (
-                              <Plus className="h-4 w-4" />
+                              <span className="text-xs font-black">+</span>
                             )}
                           </div>
                         </div>
-                      </div>
+                      </button>
                     </div>
                   );
                 })}
               </div>
             )}
-          </section>
-        </div>
+
+            {/* Save */}
+            <div className="mt-6 border-t border-border pt-5">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                    Team cost
+                  </p>
+
+                  <p
+                    className={`mt-1 text-xl font-black ${
+                      totalPrice > TEAM_BUDGET
+                        ? "text-red-500"
+                        : "text-foreground"
+                    }`}
+                  >
+                    ${totalPrice}
+                    <span className="text-sm font-bold text-muted-foreground">
+                      {" "}
+                      / ${TEAM_BUDGET}
+                    </span>
+                  </p>
+                </div>
+
+                <p
+                  className={`text-xs font-bold ${
+                    remainingBudget < 0
+                      ? "text-red-500"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {remainingBudget >= 0
+                    ? `$${remainingBudget} remaining`
+                    : `$${Math.abs(remainingBudget)} over budget`}
+                </p>
+              </div>
+
+              {saveDisabled && !saving && !isDayLocked && (
+                <div className="mb-3 rounded-xl border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+                  {selected.length !== 4
+                    ? "Select exactly 4 players to save your team."
+                    : !captain
+                      ? "Choose your captain by clicking one of the selected player's names."
+                      : totalPrice > TEAM_BUDGET
+                        ? `Your team is over the $${TEAM_BUDGET} budget.`
+                        : ""}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={save}
+                disabled={saveDisabled}
+                className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-4 text-sm font-black text-primary-foreground transition ${
+                  totalPrice > TEAM_BUDGET
+                    ? "bg-red-500"
+                    : "bg-primary hover:opacity-90"
+                } disabled:cursor-not-allowed disabled:opacity-40`}
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Save team
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   );
