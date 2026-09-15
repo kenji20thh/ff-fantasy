@@ -77,7 +77,9 @@ type FantasyPointsResponse = {
   days?: FantasyDayScore[];
 };
 
-function getParticipatingTeamIDs(day: TournamentDay): number[] {
+function getParticipatingTeamIDs(
+  day: TournamentDay,
+): number[] {
   if (!day.teams || day.teams.length === 0) {
     return [];
   }
@@ -175,7 +177,8 @@ export default function FantasyTeamPage() {
   const isOwner =
     !!user &&
     !!fantasyTeam &&
-    user.id === fantasyTeam.user_id;
+    Number(user.id) ===
+      Number(fantasyTeam.user_id);
 
   const selectedDayLocked = useMemo(() => {
     if (!selectedDay?.deadline_at) {
@@ -217,12 +220,12 @@ export default function FantasyTeamPage() {
   );
 
   const selectedDayPoints = useMemo(() => {
-    if (!points || !selectedDay) {
+    if (!selectedDay) {
       return 0;
     }
 
     return (
-      points.days?.find(
+      points?.days?.find(
         (day) =>
           day.day_id === selectedDay.id,
       )?.points ?? 0
@@ -518,7 +521,10 @@ export default function FantasyTeamPage() {
         loadedTeams,
       );
 
-      if (loadedDays.length === 0) {
+      if (
+        loadedDays.length ===
+        0
+      ) {
         return;
       }
 
@@ -583,6 +589,24 @@ export default function FantasyTeamPage() {
             ),
           ).values(),
         );
+
+      uniquePlayers.sort(
+        (a, b) => {
+          if (
+            b.price !==
+            a.price
+          ) {
+            return (
+              b.price -
+              a.price
+            );
+          }
+
+          return a.nickname.localeCompare(
+            b.nickname,
+          );
+        },
+      );
 
       setDayPlayers(
         uniquePlayers,
@@ -1000,8 +1024,7 @@ export default function FantasyTeamPage() {
 
               <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                 <span>
-                  Fantasy Team #
-                  {fantasyTeam.id}
+                  Fantasy Team #{fantasyTeam.id}
                 </span>
 
                 <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
@@ -1014,9 +1037,7 @@ export default function FantasyTeamPage() {
                 {!isOwner && (
                   <>
                     <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
-                    <span>
-                      View only
-                    </span>
+                    <span>View only</span>
                   </>
                 )}
               </div>
@@ -1037,7 +1058,6 @@ export default function FantasyTeamPage() {
         {/* BUDGET + POINTS */}
         <section className="mb-6 overflow-hidden rounded-2xl border border-border bg-card">
           <div className="grid grid-cols-2 divide-x divide-border">
-
             <div
               className={`p-5 text-center sm:p-6 ${
                 isOverBudget
@@ -1097,11 +1117,10 @@ export default function FantasyTeamPage() {
                   "Selected day"}
               </p>
             </div>
-
           </div>
         </section>
 
-        {/* DAY */}
+        {/* DAY SELECTOR */}
         <section className="mb-6">
           <div className="relative">
             <button
@@ -1205,7 +1224,7 @@ export default function FantasyTeamPage() {
           </div>
         </section>
 
-        {/* STATUS */}
+        {/* LOCKED MESSAGE */}
         {selectedDayLocked && (
           <div className="mb-6 flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
             <Lock className="h-4 w-4 text-muted-foreground" />
@@ -1216,22 +1235,20 @@ export default function FantasyTeamPage() {
               </p>
 
               <p className="text-xs text-muted-foreground">
-                The deadline has passed.
-                Your selection can no
-                longer be changed.
+                The deadline has passed. Your selection
+                can no longer be changed.
               </p>
             </div>
           </div>
         )}
 
+        {/* MESSAGE */}
         {message && (
           <div
             className={`mb-6 rounded-xl border px-4 py-3 text-sm font-semibold ${
               message
                 .toLowerCase()
-                .includes(
-                  "successfully",
-                )
+                .includes("successfully")
                 ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-500"
                 : "border-primary/20 bg-primary/5 text-primary"
             }`}
@@ -1240,10 +1257,10 @@ export default function FantasyTeamPage() {
           </div>
         )}
 
-        {/* EXACT BUILDER STRUCTURE */}
+        {/* BUILDER */}
         <section className="grid overflow-hidden rounded-2xl border border-border bg-card lg:grid-cols-[320px_1fr]">
 
-          {/* LEFT: PLAYERS */}
+          {/* LEFT: PLAYER LIST */}
           <aside className="border-b border-border p-5 lg:border-b-0 lg:border-r">
 
             <div className="mb-5">
@@ -1272,8 +1289,8 @@ export default function FantasyTeamPage() {
               </div>
             </div>
 
-            {/* TEAM FILTER */}
-            <div className="mb-5">
+            {/* TEAM FILTERS */}
+            <div>
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
                   Select by team
@@ -1296,6 +1313,7 @@ export default function FantasyTeamPage() {
               </div>
 
               <div className="grid grid-cols-4 gap-2">
+                {/* ALL */}
                 <button
                   type="button"
                   onClick={() =>
@@ -1308,7 +1326,7 @@ export default function FantasyTeamPage() {
                     selectedTeamFilter ===
                     null
                       ? "border-primary bg-primary/10"
-                      : "border-border hover:border-primary/40"
+                      : "border-border bg-background hover:border-primary/40"
                   }`}
                 >
                   <Users className="h-5 w-5 text-primary" />
@@ -1352,15 +1370,15 @@ export default function FantasyTeamPage() {
               </div>
             </div>
 
-            {/* PLAYER LIST */}
-            <div className="border-t border-border pt-4">
+            {/* PLAYERS */}
+            <div className="mt-5 border-t border-border pt-4">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
                   Players
                 </p>
 
                 <span className="rounded-full bg-muted px-2 py-1 text-[9px] font-black">
-                  {selected.length}/4
+                  {filteredPlayers.length}
                 </span>
               </div>
 
@@ -1389,7 +1407,7 @@ export default function FantasyTeamPage() {
                             player.team_id,
                         );
 
-                      const overBudget =
+                      const wouldExceedBudget =
                         totalPrice +
                           player.price >
                         TEAM_BUDGET;
@@ -1399,7 +1417,7 @@ export default function FantasyTeamPage() {
                         (selected.length >=
                           4 ||
                           sameTeam ||
-                          overBudget);
+                          wouldExceedBudget);
 
                       return (
                         <button
@@ -1418,12 +1436,13 @@ export default function FantasyTeamPage() {
                           className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
                             isSelected
                               ? "border-primary bg-primary/10"
-                              : disabled &&
-                                  canEdit
+                              : !canEdit ||
+                                  disabled
                                 ? "cursor-not-allowed opacity-40"
                                 : "border-transparent hover:border-border hover:bg-muted/50"
                           }`}
                         >
+                          {/* TEAM LOGO */}
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
                             <img
                               src={getTeamLogo(
@@ -1436,6 +1455,7 @@ export default function FantasyTeamPage() {
                             />
                           </div>
 
+                          {/* PLAYER */}
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-xs font-black">
                               {player.nickname}
@@ -1448,7 +1468,8 @@ export default function FantasyTeamPage() {
                             </p>
                           </div>
 
-                          <div className="text-right">
+                          {/* PRICE + POINTS */}
+                          <div className="shrink-0 text-right">
                             <p className="text-xs font-black">
                               ${player.price}
                             </p>
@@ -1475,8 +1496,8 @@ export default function FantasyTeamPage() {
             </div>
           </aside>
 
-          {/* MIDDLE: ONLY 4 SLOTS */}
-          <div className="flex min-h-[700px] flex-col p-5 sm:p-8">
+          {/* MIDDLE: FOUR SLOTS */}
+          <div className="p-5 sm:p-8">
 
             <div className="mb-6">
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
@@ -1489,29 +1510,27 @@ export default function FantasyTeamPage() {
 
               <p className="mt-1 text-xs text-muted-foreground">
                 {canEdit
-                  ? "Select a player from the list. Click their name to choose your captain."
+                  ? "Choose players from the list. Click a selected player's name to make them captain."
                   : "Your selected players for this tournament day."}
               </p>
             </div>
 
-            {/* X-X / X-X */}
-            <div className="grid flex-1 grid-cols-2 gap-4 content-start">
+            {/* 2 x 2 FORMATION */}
+            <div className="grid grid-cols-2 gap-4">
 
               {[0, 1, 2, 3].map(
                 (index) => {
                   const player =
-                    selected[
-                      index
-                    ];
+                    selected[index];
 
                   if (!player) {
                     return (
                       <div
                         key={index}
-                        className="flex min-h-[190px] items-center justify-center rounded-2xl border border-dashed border-border bg-muted/10"
+                        className="flex min-h-[180px] items-center justify-center rounded-2xl border border-dashed border-border bg-muted/10"
                       >
                         <div className="text-center">
-                          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-border">
+                          <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-border">
                             <Users className="h-5 w-5 text-muted-foreground" />
                           </div>
 
@@ -1524,19 +1543,17 @@ export default function FantasyTeamPage() {
                   }
 
                   const isCaptain =
-                    captain ===
-                    player.id;
+                    captain === player.id;
 
                   return (
                     <div
                       key={player.id}
-                      className={`relative flex min-h-[190px] flex-col items-center justify-center rounded-2xl border p-5 ${
+                      className={`relative flex min-h-[180px] flex-col items-center justify-center rounded-2xl border p-5 transition ${
                         isCaptain
                           ? "border-primary bg-primary/10"
                           : "border-border bg-muted/10"
                       }`}
                     >
-                      {/* REMOVE */}
                       {canEdit && (
                         <button
                           type="button"
@@ -1551,8 +1568,8 @@ export default function FantasyTeamPage() {
                         </button>
                       )}
 
-                      {/* TEAM LOGO */}
-                      <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
+                      {/* LOGO */}
+                      <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
                         <img
                           src={getTeamLogo(
                             player.team_id,
@@ -1560,11 +1577,11 @@ export default function FantasyTeamPage() {
                           alt={getTeamName(
                             player.team_id,
                           )}
-                          className="h-11 w-11 object-contain"
+                          className="h-10 w-10 object-contain"
                         />
                       </div>
 
-                      {/* PLAYER NAME */}
+                      {/* NAME = CAPTAIN */}
                       <button
                         type="button"
                         disabled={
@@ -1576,7 +1593,7 @@ export default function FantasyTeamPage() {
                             player.id,
                           )
                         }
-                        className={`mt-4 max-w-full truncate text-center text-base font-black ${
+                        className={`mt-3 max-w-full truncate text-center text-base font-black transition ${
                           isCaptain
                             ? "text-primary"
                             : canEdit
@@ -1584,9 +1601,7 @@ export default function FantasyTeamPage() {
                               : ""
                         }`}
                       >
-                        {
-                          player.nickname
-                        }
+                        {player.nickname}
                       </button>
 
                       <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -1595,7 +1610,7 @@ export default function FantasyTeamPage() {
                         )}
                       </p>
 
-                      <div className="mt-3 flex items-center gap-4">
+                      <div className="mt-2 flex items-center gap-4">
                         <span className="text-sm font-black">
                           ${player.price}
                         </span>
@@ -1609,7 +1624,7 @@ export default function FantasyTeamPage() {
                       </div>
 
                       {isCaptain && (
-                        <div className="mt-3 inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-primary-foreground">
+                        <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-primary-foreground">
                           <Crown className="h-3 w-3" />
                           Captain
                         </div>
@@ -1620,10 +1635,9 @@ export default function FantasyTeamPage() {
               )}
             </div>
 
-            {/* BOTTOM SAVE */}
-            <div className="mt-8 border-t border-border pt-6">
-
-              <div className="mb-5 grid grid-cols-2 gap-4">
+            {/* SAVE */}
+            <div className="mt-6 border-t border-border pt-6">
+              <div className="mb-4 flex items-end justify-between">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
                     Budget
@@ -1701,19 +1715,17 @@ export default function FantasyTeamPage() {
                   {selected.length ===
                     4 &&
                     !captain && (
-                      <p className="mt-3 text-center text-xs font-bold text-red-500">
-                        Click a player's
-                        name to choose
-                        your captain.
-                      </p>
-                    )}
+                    <p className="mt-3 text-center text-xs font-bold text-red-500">
+                      Click a player's
+                      name to choose
+                      your captain.
+                    </p>
+                  )}
 
                   {isOverBudget && (
                     <p className="mt-3 text-center text-xs font-bold text-red-500">
-                      Your team is over
-                      the $
-                      {TEAM_BUDGET}{" "}
-                      budget.
+                      Your team is over the $
+                      {TEAM_BUDGET} budget.
                     </p>
                   )}
                 </>
@@ -1737,8 +1749,8 @@ export default function FantasyTeamPage() {
           {selected.length ===
           0 ? (
             <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
-              No players selected
-              for this day.
+              No players selected for
+              this day.
             </div>
           ) : (
             <div className="space-y-4">
