@@ -42,6 +42,39 @@ type FantasyTeamResponse = {
   days?: FantasyDaySelection[];
 };
 
+type RoomScore = {
+  room_id: number;
+  kills: number;
+  assists: number;
+  first_blood: boolean;
+  placement: number;
+  points: number;
+};
+
+type PlayerScore = {
+  player_id: number;
+  nickname?: string;
+  team_id?: number;
+  captain?: boolean;
+  rooms?: RoomScore[];
+  total_points: number;
+};
+
+type FantasyDayScore = {
+  day_id: number;
+  day_name?: string;
+  captain_player_id?: number | null;
+  total_points: number;
+  players?: PlayerScore[];
+};
+
+type FantasyPointsResponse = {
+  fantasy_team_id?: string | number;
+  total_points?: number;
+  days?: FantasyDayScore[];
+  players?: PlayerScore[];
+};
+
 function getParticipatingTeamIDs(day: TournamentDay): number[] {
   if (!day.teams || day.teams.length === 0) {
     return [];
@@ -111,6 +144,9 @@ export default function FantasyTeamBuilderPage() {
   const [fantasyId, setFantasyId] =
     useState<number | null>(null);
 
+  const [points, setPoints] =
+    useState<FantasyPointsResponse | null>(null);
+
   const [playerSearch, setPlayerSearch] =
     useState("");
 
@@ -132,19 +168,86 @@ export default function FantasyTeamBuilderPage() {
   const [openDayMenu, setOpenDayMenu] =
     useState(false);
 
+  const [countdown, setCountdown] =
+    useState("00:00:00:00");
+
   const isDayLocked = useMemo(() => {
-  if (!selectedDay?.deadline_at) {
-    return false;
-  }
+    if (!selectedDay?.deadline_at) {
+      return false;
+    }
 
-  return (
-    new Date(selectedDay.deadline_at).getTime() <=
-    Date.now()
-  );
-}, [selectedDay]);
+    return (
+      new Date(
+        selectedDay.deadline_at,
+      ).getTime() <= Date.now()
+    );
+  }, [selectedDay]);
 
-const canEdit = !isDayLocked;
+  const canEdit = !isDayLocked;
 
+  /* -------------------------------------------------------
+     LIVE COUNTDOWN
+  ------------------------------------------------------- */
+  useEffect(() => {
+    if (!selectedDay?.deadline_at) {
+      setCountdown("00:00:00:00");
+      return;
+    }
+
+    const updateCountdown = () => {
+      const remaining =
+        new Date(
+          selectedDay.deadline_at,
+        ).getTime() -
+        Date.now();
+
+      if (remaining <= 0) {
+        setCountdown("00:00:00:00");
+        return;
+      }
+
+      const totalSeconds =
+        Math.floor(remaining / 1000);
+
+      const days =
+        Math.floor(totalSeconds / 86400);
+
+      const hours =
+        Math.floor(
+          (totalSeconds % 86400) / 3600,
+        );
+
+      const minutes =
+        Math.floor(
+          (totalSeconds % 3600) / 60,
+        );
+
+      const seconds =
+        totalSeconds % 60;
+
+      const pad = (value: number) =>
+        String(value).padStart(2, "0");
+
+      setCountdown(
+        `${pad(days)}:${pad(hours)}:${pad(minutes)}:${pad(seconds)}`,
+      );
+    };
+
+    updateCountdown();
+
+    const interval = window.setInterval(
+      updateCountdown,
+      1000,
+    );
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [selectedDay]);
+
+  /* -------------------------------------------------------
+     BUDGET
+  ------------------------------------------------------- */
   const totalPrice = useMemo(() => {
     return selected.reduce(
       (total, player) =>
@@ -169,6 +272,52 @@ const canEdit = !isDayLocked;
     [selected],
   );
 
+  /* -------------------------------------------------------
+     POINTS
+  ------------------------------------------------------- */
+  const selectedDayPoints = useMemo(() => {
+    if (!selectedDay) {
+      return 0;
+    }
+
+    return (
+      points?.days?.find(
+        (day) =>
+          day.day_id ===
+          selectedDay.id,
+      )?.total_points ?? 0
+    );
+  }, [points, selectedDay]);
+
+  function getPlayerScore(
+    playerID: number,
+  ) {
+    const dayScore =
+      points?.days?.find(
+        (day) =>
+          day.day_id ===
+          selectedDay?.id,
+      );
+
+    return dayScore?.players?.find(
+      (player) =>
+        player.player_id ===
+        playerID,
+    );
+  }
+
+  function getPlayerPoints(
+    playerID: number,
+  ) {
+    return (
+      getPlayerScore(playerID)
+        ?.total_points ?? 0
+    );
+  }
+
+  /* -------------------------------------------------------
+     PARTICIPATING TEAMS
+  ------------------------------------------------------- */
   const participatingTeams = useMemo(() => {
     if (!selectedDay) {
       return [];
@@ -191,6 +340,9 @@ const canEdit = !isDayLocked;
     allTeams,
   ]);
 
+  /* -------------------------------------------------------
+     FILTERED PLAYERS
+  ------------------------------------------------------- */
   const filteredPlayers = useMemo(() => {
     const query =
       playerSearch.trim().toLowerCase();
@@ -231,15 +383,20 @@ const canEdit = !isDayLocked;
     selectedTeamFilter,
   ]);
 
-  function getTeamName(teamID: number) {
+  function getTeamName(
+    teamID: number,
+  ) {
     return (
       allTeams.find(
-        (team) => team.id === teamID,
+        (team) =>
+          team.id === teamID,
       )?.name ?? "Unknown Team"
     );
   }
 
-  function getTeamLogo(teamID: number) {
+  function getTeamLogo(
+    teamID: number,
+  ) {
     return `/logos/${teamID}.png`;
   }
 
@@ -260,6 +417,9 @@ const canEdit = !isDayLocked;
     });
   }
 
+  /* -------------------------------------------------------
+     LOAD PLAYERS FOR A DAY
+  ------------------------------------------------------- */
   async function loadDay(
     day: TournamentDay,
     fantasyTeam?: FantasyTeamResponse | null,
@@ -365,6 +525,9 @@ const canEdit = !isDayLocked;
     }
   }
 
+  /* -------------------------------------------------------
+     INITIAL LOAD
+  ------------------------------------------------------- */
   async function loadInitialData() {
     setLoading(true);
     setMessage("");
@@ -411,12 +574,28 @@ const canEdit = !isDayLocked;
         setFantasyId(
           fantasyTeam.id,
         );
-      }
 
-      if (fantasyTeam?.days) {
         setDaySelections(
-          fantasyTeam.days,
+          fantasyTeam.days ??
+            [],
         );
+
+        /*
+         * Load the existing fantasy team's
+         * calculated points.
+         */
+        try {
+          const pointsResponse =
+            await api.fantasyPoints(
+              fantasyTeam.id,
+            );
+
+          setPoints(
+            pointsResponse as FantasyPointsResponse,
+          );
+        } catch {
+          setPoints(null);
+        }
       }
 
       if (
@@ -461,6 +640,9 @@ const canEdit = !isDayLocked;
     loadInitialData();
   }, []);
 
+  /* -------------------------------------------------------
+     CHANGE DAY
+  ------------------------------------------------------- */
   async function changeDay(
     day: TournamentDay,
   ) {
@@ -475,18 +657,28 @@ const canEdit = !isDayLocked;
     setSelectedDay(day);
     setOpenDayMenu(false);
 
-    await loadDay(day, {
-      id: fantasyId ?? 0,
-      user_id: user?.id ?? 0,
-      days: daySelections,
-    });
+    await loadDay(
+      day,
+      {
+        id:
+          fantasyId ?? 0,
+        user_id:
+          user?.id ?? 0,
+        days:
+          daySelections,
+      },
+      allTeams,
+    );
   }
 
+  /* -------------------------------------------------------
+     SELECT PLAYER
+  ------------------------------------------------------- */
   function selectPlayer(
     player: Player,
   ) {
     if (
-      isDayLocked ||
+      !canEdit ||
       saving
     ) {
       return;
@@ -566,11 +758,14 @@ const canEdit = !isDayLocked;
     setMessage("");
   }
 
+  /* -------------------------------------------------------
+     REMOVE PLAYER
+  ------------------------------------------------------- */
   function removePlayer(
     playerID: number,
   ) {
     if (
-      isDayLocked ||
+      !canEdit ||
       saving
     ) {
       return;
@@ -595,11 +790,14 @@ const canEdit = !isDayLocked;
     setMessage("");
   }
 
+  /* -------------------------------------------------------
+     CAPTAIN
+  ------------------------------------------------------- */
   function chooseCaptain(
     playerID: number,
   ) {
     if (
-      isDayLocked ||
+      !canEdit ||
       saving
     ) {
       return;
@@ -623,9 +821,14 @@ const canEdit = !isDayLocked;
     setMessage("");
   }
 
+  /* -------------------------------------------------------
+     SAVE
+  ------------------------------------------------------- */
   async function save() {
     if (!user) {
-      router.push("/login");
+      router.push(
+        "/login",
+      );
       return;
     }
 
@@ -713,6 +916,24 @@ const canEdit = !isDayLocked;
         captain,
       );
 
+      /*
+       * Refresh calculated points after saving.
+       * This does not fabricate points; it reads
+       * whatever the backend currently returns.
+       */
+      try {
+        const pointsResponse =
+          await api.fantasyPoints(
+            currentFantasyId,
+          );
+
+        setPoints(
+          pointsResponse as FantasyPointsResponse,
+        );
+      } catch {
+        setPoints(null);
+      }
+
       const updatedSelection:
         FantasyDaySelection = {
         id:
@@ -788,7 +1009,7 @@ const canEdit = !isDayLocked;
 
   return (
     <main className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8">
 
         {/* HEADER */}
         <section className="mb-6">
@@ -808,41 +1029,70 @@ const canEdit = !isDayLocked;
                 and choose your captain.
               </p>
             </div>
+          </div>
+        </section>
 
-            {/* DAY SELECTOR */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() =>
-                  setOpenDayMenu(
-                    (value) => !value,
-                  )
-                }
-                className="flex min-w-[230px] items-center justify-between gap-4 rounded-xl border border-border bg-card px-4 py-3 text-left shadow-sm transition hover:border-primary/50"
-              >
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+        {/* DAY */}
+        <section className="mb-6">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() =>
+                setOpenDayMenu(
+                  (value) => !value,
+                )
+              }
+              className="flex w-full items-center justify-between rounded-2xl border border-border bg-card px-5 py-4 text-left transition hover:border-primary/50 sm:px-6"
+            >
+              {/* LEFT */}
+              <div className="flex min-w-0 items-center gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  {isDayLocked ? (
+                    <Lock className="h-5 w-5" />
+                  ) : (
+                    <Users className="h-5 w-5" />
+                  )}
+                </div>
+
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
                     Tournament day
                   </p>
 
-                  <p className="mt-1 font-bold">
+                  <p className="mt-1 truncate text-base font-black sm:text-lg">
                     {selectedDay?.name ??
                       "Select day"}
                   </p>
                 </div>
+              </div>
 
-                <ChevronDown
-                  className={`h-4 w-4 transition ${
-                    openDayMenu
-                      ? "rotate-180"
-                      : ""
+              {/* CENTER COUNTDOWN */}
+              <div className="absolute left-1/2 -translate-x-1/2 text-center">
+                <p
+                  className={`font-mono text-2xl font-black tracking-wider sm:text-3xl lg:text-4xl ${
+                    isDayLocked
+                      ? "text-red-500"
+                      : "text-primary"
                   }`}
-                />
-              </button>
+                >
+                  {countdown}
+                </p>
+              </div>
 
-              {openDayMenu && (
-                <div className="absolute right-0 z-40 mt-2 w-full min-w-[280px] overflow-hidden rounded-xl border border-border bg-card p-1 shadow-xl">
-                  {days.map((day) => {
+              {/* RIGHT */}
+              <ChevronDown
+                className={`ml-auto h-5 w-5 shrink-0 transition ${
+                  openDayMenu
+                    ? "rotate-180"
+                    : ""
+                }`}
+              />
+            </button>
+
+            {openDayMenu && (
+              <div className="absolute right-0 z-40 mt-2 w-full min-w-[280px] overflow-hidden rounded-2xl border border-border bg-card p-1 shadow-2xl">
+                {days.map(
+                  (day) => {
                     const locked =
                       !!day.deadline_at &&
                       new Date(
@@ -855,9 +1105,11 @@ const canEdit = !isDayLocked;
                         key={day.id}
                         type="button"
                         onClick={() =>
-                          changeDay(day)
+                          changeDay(
+                            day,
+                          )
                         }
-                        className={`flex w-full items-center justify-between rounded-lg px-3 py-3 text-left transition ${
+                        className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition ${
                           selectedDay?.id ===
                           day.id
                             ? "bg-primary/10 text-primary"
@@ -865,13 +1117,16 @@ const canEdit = !isDayLocked;
                         }`}
                       >
                         <div>
-                          <p className="text-sm font-semibold">
+                          <p className="text-sm font-bold">
                             {day.name}
                           </p>
 
                           {day.deadline_at && (
-                            <p className="mt-0.5 text-[11px] text-muted-foreground">
-                              Deadline:{" "}
+                            <p className="mt-1 text-[10px] text-muted-foreground">
+                              {locked
+                                ? "Locked"
+                                : "Open"}{" "}
+                              ·{" "}
                               {formatDeadline(
                                 day,
                               )}
@@ -884,20 +1139,20 @@ const canEdit = !isDayLocked;
                         )}
                       </button>
                     );
-                  })}
-                </div>
-              )}
-            </div>
+                  },
+                )}
+              </div>
+            )}
           </div>
         </section>
 
         {/* LOCK */}
         {isDayLocked && (
-          <div className="mb-6 flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm">
+          <div className="mb-6 flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
             <Lock className="h-4 w-4 text-muted-foreground" />
 
             <div>
-              <p className="font-semibold">
+              <p className="text-sm font-bold">
                 This day is locked
               </p>
 
@@ -937,6 +1192,20 @@ const canEdit = !isDayLocked;
                   / ${TEAM_BUDGET}
                 </span>
               </p>
+
+              <p
+                className={`mt-2 text-xs font-bold ${
+                  isOverBudget
+                    ? "text-red-500"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {isOverBudget
+                  ? `$${Math.abs(
+                      remainingBudget,
+                    )} over budget`
+                  : `$${remainingBudget} remaining`}
+              </p>
             </div>
 
             <div className="p-5 text-center sm:p-6">
@@ -944,11 +1213,17 @@ const canEdit = !isDayLocked;
                 Points
               </p>
 
-              <p className="mt-2 text-3xl font-black sm:text-4xl">
-                —
+              <p className="mt-2 text-3xl font-black text-primary sm:text-4xl">
+                {selectedDayPoints}
+
                 <span className="ml-1 text-base font-bold text-muted-foreground">
                   pts
                 </span>
+              </p>
+
+              <p className="mt-2 text-xs text-muted-foreground">
+                {selectedDay?.name ??
+                  "Selected day"}
               </p>
             </div>
           </div>
@@ -956,7 +1231,7 @@ const canEdit = !isDayLocked;
 
         {/* MESSAGE */}
         {message && (
-          <div className="mb-6 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">
+          <div className="mb-6 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm font-semibold text-primary">
             {message}
           </div>
         )}
@@ -964,7 +1239,7 @@ const canEdit = !isDayLocked;
         {/* MAIN BUILDER */}
         <section className="grid overflow-hidden rounded-2xl border border-border bg-card lg:grid-cols-[320px_1fr]">
 
-          {/* LEFT: PLAYER LIST */}
+          {/* LEFT */}
           <aside className="border-b border-border p-5 lg:border-b-0 lg:border-r">
 
             {/* SEARCH */}
@@ -1018,7 +1293,6 @@ const canEdit = !isDayLocked;
               </div>
 
               <div className="grid grid-cols-4 gap-2">
-                {/* ALL */}
                 <button
                   type="button"
                   onClick={() =>
@@ -1082,8 +1356,8 @@ const canEdit = !isDayLocked;
                   Players
                 </p>
 
-                <span className="text-[10px] font-bold text-muted-foreground">
-                  {filteredPlayers.length}
+                <span className="rounded-full bg-muted px-2 py-1 text-[9px] font-black">
+                  {selected.length}/4
                 </span>
               </div>
 
@@ -1129,7 +1403,7 @@ const canEdit = !isDayLocked;
                           key={player.id}
                           type="button"
                           disabled={
-                            isDayLocked ||
+                            !canEdit ||
                             saving ||
                             blocked
                           }
@@ -1141,8 +1415,8 @@ const canEdit = !isDayLocked;
                           className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
                             isSelected
                               ? "border-primary bg-primary/10"
-                              : blocked ||
-                                  isDayLocked
+                              : !canEdit ||
+                                  blocked
                                 ? "cursor-not-allowed opacity-40"
                                 : "border-transparent hover:border-border hover:bg-muted/50"
                           }`}
@@ -1171,17 +1445,24 @@ const canEdit = !isDayLocked;
                             </p>
                           </div>
 
-                          <div className="flex shrink-0 items-center gap-2">
-                            <span className="text-xs font-black">
+                          <div className="shrink-0 text-right">
+                            <p className="text-xs font-black">
                               ${player.price}
-                            </span>
+                            </p>
 
-                            {isSelected && (
-                              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                                <Check className="h-3.5 w-3.5" />
-                              </div>
-                            )}
+                            <p className="text-[9px] font-bold text-primary">
+                              {getPlayerPoints(
+                                player.id,
+                              )}{" "}
+                              pts
+                            </p>
                           </div>
+
+                          {isSelected && (
+                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                              <Check className="h-3.5 w-3.5" />
+                            </div>
+                          )}
                         </button>
                       );
                     },
@@ -1191,7 +1472,7 @@ const canEdit = !isDayLocked;
             </div>
           </aside>
 
-          {/* MIDDLE: 4 SLOTS ONLY */}
+          {/* MIDDLE */}
           <div className="p-5 sm:p-8">
             <div className="mb-6">
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
@@ -1204,11 +1485,11 @@ const canEdit = !isDayLocked;
 
               <p className="mt-1 text-xs text-muted-foreground">
                 Click anywhere inside a selected
-                player&apos;s box to make them captain.
+                player&apos;s box to make them
+                captain.
               </p>
             </div>
 
-            {/* 2 x 2 */}
             <div className="grid grid-cols-2 gap-4">
               {[0, 1, 2, 3].map(
                 (index) => {
@@ -1243,11 +1524,10 @@ const canEdit = !isDayLocked;
                       key={player.id}
                       className="relative min-h-[180px]"
                     >
-                      {/* ENTIRE BOX = CAPTAIN */}
                       <button
                         type="button"
                         disabled={
-                          isDayLocked ||
+                          !canEdit ||
                           saving
                         }
                         onClick={() =>
@@ -1293,22 +1573,31 @@ const canEdit = !isDayLocked;
                           <span className="text-sm font-black">
                             ${player.price}
                           </span>
+
+                          <span className="text-sm font-black text-primary">
+                            {getPlayerPoints(
+                              player.id,
+                            )}{" "}
+                            pts
+                          </span>
                         </div>
 
                         {isCaptain && (
-                          <div className="mt-3 inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-primary-foreground">
+                          <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-primary-foreground">
                             <Crown className="h-3 w-3" />
                             Captain
                           </div>
                         )}
                       </button>
 
-                      {/* REMOVE BUTTON */}
                       {canEdit && (
                         <button
                           type="button"
-                          onClick={(event) => {
+                          onClick={(
+                            event,
+                          ) => {
                             event.stopPropagation();
+
                             removePlayer(
                               player.id,
                             );
@@ -1375,7 +1664,8 @@ const canEdit = !isDayLocked;
                 disabled={
                   saving ||
                   isDayLocked ||
-                  selected.length !== 4 ||
+                  selected.length !==
+                    4 ||
                   !captain ||
                   isOverBudget
                 }
@@ -1394,14 +1684,16 @@ const canEdit = !isDayLocked;
                 )}
               </button>
 
-              {selected.length !== 4 &&
+              {selected.length !==
+                4 &&
                 !isDayLocked && (
                   <p className="mt-3 text-center text-xs text-muted-foreground">
                     Select exactly 4 players.
                   </p>
                 )}
 
-              {selected.length === 4 &&
+              {selected.length ===
+                4 &&
                 !captain &&
                 !isDayLocked && (
                   <p className="mt-3 text-center text-xs font-bold text-red-500">
