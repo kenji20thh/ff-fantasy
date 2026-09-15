@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 
@@ -185,7 +186,7 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 	// Make sure all players exist and belong to 4 different teams.
 	rows, err := h.DB.Query(
 		ctx,
-		"SELECT id, team_id FROM players WHERE id = ANY($1)",
+		"SELECT id, team_id, price FROM players WHERE id = ANY($1)",
 		request.PlayerIDs,
 	)
 
@@ -197,18 +198,21 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 
 	teamIDs := make(map[int]bool)
 	playerCount := 0
+	totalPrice := 0
 
 	for rows.Next() {
 		var playerID int
 		var teamID int
+		var price int
 
-		if err := rows.Scan(&playerID, &teamID); err != nil {
+		if err := rows.Scan(&playerID, &teamID, &price); err != nil {
 			http.Error(w, "Failed to read player", http.StatusInternalServerError)
 			return
 		}
 
 		playerCount++
 		teamIDs[teamID] = true
+		totalPrice += price
 	}
 
 	if err := rows.Err(); err != nil {
@@ -223,6 +227,21 @@ func (h *FantasyTeamHandler) SelectPlayers(w http.ResponseWriter, r *http.Reques
 
 	if len(teamIDs) != 4 {
 		http.Error(w, "Players must come from 4 different teams", http.StatusBadRequest)
+		return
+	}
+
+	const teamBudget = 100
+
+	if totalPrice > teamBudget {
+		http.Error(
+			w,
+			fmt.Sprintf(
+				"Your team is over budget. Total price is %d, budget is %d.",
+				totalPrice,
+				teamBudget,
+			),
+			http.StatusBadRequest,
+		)
 		return
 	}
 

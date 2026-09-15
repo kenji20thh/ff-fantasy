@@ -5,6 +5,7 @@ type Player struct {
 	TeamID     int    `json:"team_id"`
 	Nickname   string `json:"nickname"`
 	PictureURL string `json:"picture_url"`
+	Price      int    `json:"price"`
 }
 
 type PlayerRanking struct {
