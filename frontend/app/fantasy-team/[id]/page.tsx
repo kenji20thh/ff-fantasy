@@ -174,6 +174,9 @@ export default function FantasyTeamPage() {
   const [openDayMenu, setOpenDayMenu] =
     useState(false);
 
+  const [countdown, setCountdown] =
+    useState("00:00:00:00");
+
   const isOwner =
     !!user &&
     !!fantasyTeam &&
@@ -194,6 +197,63 @@ export default function FantasyTeamPage() {
 
   const canEdit =
     isOwner && !selectedDayLocked;
+
+  useEffect(() => {
+    if (!selectedDay?.deadline_at) {
+      setCountdown("00:00:00:00");
+      return;
+    }
+
+    const updateCountdown = () => {
+      const remaining =
+        new Date(
+          selectedDay.deadline_at,
+        ).getTime() -
+        Date.now();
+
+      if (remaining <= 0) {
+        setCountdown("00:00:00:00");
+        return;
+      }
+
+      const totalSeconds =
+        Math.floor(remaining / 1000);
+
+      const days =
+        Math.floor(totalSeconds / 86400);
+
+      const hours =
+        Math.floor(
+          (totalSeconds % 86400) / 3600,
+        );
+
+      const minutes =
+        Math.floor(
+          (totalSeconds % 3600) / 60,
+        );
+
+      const seconds =
+        totalSeconds % 60;
+
+      const pad = (value: number) =>
+        String(value).padStart(2, "0");
+
+      setCountdown(
+        `${pad(days)}:${pad(hours)}:${pad(minutes)}:${pad(seconds)}`,
+      );
+    };
+
+    updateCountdown();
+
+    const interval = window.setInterval(
+      updateCountdown,
+      1000,
+    );
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [selectedDay]);
 
   const totalPrice = useMemo(() => {
     return selected.reduce(
@@ -1152,11 +1212,14 @@ export default function FantasyTeamPage() {
                   </p>
 
                   {selectedDay?.deadline_at && (
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      Deadline:{" "}
-                      {formatDeadline(
-                        selectedDay,
-                      )}
+                    <p
+                      className={`mt-1 font-mono text-sm font-black tracking-wider ${
+                        selectedDayLocked
+                          ? "text-red-500"
+                          : "text-primary"
+                      }`}
+                    >
+                      {countdown}
                     </p>
                   )}
                 </div>
@@ -1493,7 +1556,6 @@ export default function FantasyTeamPage() {
 
           {/* MIDDLE: FOUR SLOTS */}
           <div className="p-5 sm:p-8">
-
             <div className="mb-6">
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
                 {selectedDay?.name}
@@ -1882,3 +1944,4 @@ export default function FantasyTeamPage() {
     </main>
   );
 }
+
