@@ -18,6 +18,7 @@ type PlacementTeam struct {
 	TeamName        string `json:"team_name"`
 	PlacementPoints int    `json:"placement_points"`
 	Kills           int    `json:"kills"`
+	StartingPoints  int    `json:"starting_points"`
 	Points          int    `json:"points"`
 	RoomsPlayed     int    `json:"rooms_played"`
 	Booyahs         int    `json:"booyahs"`
@@ -92,6 +93,7 @@ func (h *PlacementHandler) GetPlacement(w http.ResponseWriter, r *http.Request) 
 			&team.TeamName,
 			&team.PlacementPoints,
 			&team.Kills,
+			&team.StartingPoints,
 			&team.Points,
 			&team.RoomsPlayed,
 			&team.Booyahs,
@@ -167,7 +169,6 @@ GROUP BY t.id, t.name
 
 ORDER BY points DESC, kills DESC, team_name;
 `
-
 const placementDayQuery = `
 WITH team_room_stats AS (
 	SELECT
@@ -210,20 +211,44 @@ WITH team_room_stats AS (
 		t.id,
 		t.name,
 		prs.room_id
+),
+
+team_totals AS (
+	SELECT
+		team_id,
+		team_name,
+		SUM(placement_points)::int AS placement_points,
+		SUM(kills)::int AS kills,
+		COUNT(*)::int AS rooms_played,
+		SUM(booyah)::int AS booyahs
+
+	FROM team_room_stats
+
+	GROUP BY team_id, team_name
 )
 
 SELECT
-	team_id,
-	team_name,
-	SUM(placement_points)::int AS placement_points,
-	SUM(kills)::int AS kills,
-	SUM(placement_points + kills)::int AS points,
-	COUNT(*)::int AS rooms_played,
-	SUM(booyah)::int AS booyahs
+	tt.team_id,
+	tt.team_name,
+	tt.placement_points,
+	tt.kills,
 
-FROM team_room_stats
+	COALESCE(tdtt.starting_points, 0)::int AS starting_points,
 
-GROUP BY team_id, team_name
+	(
+		COALESCE(tdtt.starting_points, 0)
+		+ tt.placement_points
+		+ tt.kills
+	)::int AS points,
+
+	tt.rooms_played,
+	tt.booyahs
+
+FROM team_totals tt
+
+LEFT JOIN tournament_day_teams tdtt
+	ON tdtt.team_id = tt.team_id
+	AND tdtt.tournament_day_id = $1
 
 ORDER BY points DESC, kills DESC, team_name;
 `
