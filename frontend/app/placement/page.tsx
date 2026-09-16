@@ -107,14 +107,14 @@ function PlacementRowSkeleton({
       </div>
 
       {showStarting && (
-        <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:block" />
+        <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:ml-auto md:block" />
       )}
 
-      <div className="hidden h-4 w-16 animate-pulse rounded bg-border/60 md:block" />
-      <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:block" />
-      <div className="hidden h-4 w-16 animate-pulse rounded bg-border/60 md:block" />
-      <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:block" />
-      <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:block" />
+      <div className="hidden h-4 w-16 animate-pulse rounded bg-border/60 md:ml-auto md:block" />
+      <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:ml-auto md:block" />
+      <div className="hidden h-4 w-16 animate-pulse rounded bg-border/60 md:ml-auto md:block" />
+      <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:ml-auto md:block" />
+      <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:ml-auto md:block" />
 
       <div className="ml-auto h-5 w-10 animate-pulse rounded bg-border/60" />
     </div>
@@ -966,13 +966,13 @@ function PlacementContent() {
 
           <div>Team</div>
 
-          {showStartingPoints && <div>Starting</div>}
+          {showStartingPoints && <div className="text-right">Starting</div>}
 
-          <div>Total</div>
-          <div>Kills</div>
-          <div>Placement</div>
-          <div>Booyahs</div>
-          <div>Rooms</div>
+          <div className="text-right">Total</div>
+          <div className="text-right">Kills</div>
+          <div className="text-right">Placement</div>
+          <div className="text-right">Booyahs</div>
+          <div className="text-right">Rooms</div>
         </div>
 
         {loadingDays || loadingPlacement ? (
@@ -1016,28 +1016,28 @@ function PlacementContent() {
               </div>
 
               {showStartingPoints && (
-                <div className="hidden text-sm font-medium md:block">
+                <div className="hidden text-right text-sm font-medium md:block">
                   {team.starting_points}
                 </div>
               )}
 
-              <div className="text-right text-base font-bold md:text-left">
+              <div className="text-right text-base font-bold">
                 {team.points}
               </div>
 
-              <div className="hidden text-sm md:block">
+              <div className="hidden text-right text-sm md:block">
                 {team.kills}
               </div>
 
-              <div className="hidden text-sm md:block">
+              <div className="hidden text-right text-sm md:block">
                 {team.placement_points}
               </div>
 
-              <div className="hidden text-sm md:block">
+              <div className="hidden text-right text-sm md:block">
                 {team.booyahs}
               </div>
 
-              <div className="hidden text-sm md:block">
+              <div className="hidden text-right text-sm md:block">
                 {team.rooms_played}
               </div>
             </div>
