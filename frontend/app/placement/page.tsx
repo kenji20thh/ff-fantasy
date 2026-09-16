@@ -1,814 +1,628 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+
 import { api } from "@/lib/api";
 import { asArray, errorMessage } from "@/lib/types";
 
-import type { PlacementTeam, TournamentDay, Room } from "@/lib/types";
+import type { PlacementTeam, TournamentDay } from "@/lib/types";
 
-type Phase = "league" | "rush" | "grand-final";
-type ResultView = "day" | "room";
+type Phase = "league" | "rush" | "final";
 
-function weekNumber(name: string) {
-  const match = name.match(/week\s*(\d+)/i);
+const PHASES: { id: Phase; label: string }[] = [
+  { id: "league", label: "League Phase" },
+  { id: "rush", label: "Rush Point" },
+  { id: "final", label: "Grand Final" },
+];
+
+function parseDayName(name: string): {
+  phase: Phase | "unknown";
+  week?: number;
+  day?: number;
+} {
+  const league = name.match(/^week\s*(\d+)\s*day\s*(\d+)/i);
+
+  if (league) {
+    return {
+      phase: "league",
+      week: Number(league[1]),
+      day: Number(league[2]),
+    };
+  }
+
+  const rush = name.match(/^.*rush.*$/i);
+
+  if (rush) {
+    return {
+      phase: "rush",
+    };
+  }
+
+  const final = name.match(/^grand\s*final/i);
+
+  if (final) {
+    return {
+      phase: "final",
+    };
+  }
+
+  return {
+    phase: "unknown",
+  };
+}
+
+function dayNumber(day: TournamentDay) {
+  const parsed = parseDayName(day.name);
+
+  if (parsed.day) {
+    return parsed.day;
+  }
+
+  const match = day.name.match(/day\s*(\d+)/i);
+
   return match ? Number(match[1]) : 0;
 }
 
-function dayNumber(name: string) {
-  const match = name.match(/day\s*(\d+)/i);
-  return match ? Number(match[1]) : 0;
+function PlacementRowSkeleton() {
+  return (
+    <div className="grid grid-cols-[50px_1fr_auto] items-center gap-4 border-b border-border px-4 py-5 last:border-b-0 md:grid-cols-[60px_1fr_120px_100px_120px_100px_100px]">
+      <div className="h-4 w-5 animate-pulse rounded bg-border/60" />
+
+      <div className="flex min-w-0 items-center gap-4">
+        <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-border/60" />
+        <div className="h-4 w-32 animate-pulse rounded bg-border/60" />
+      </div>
+
+      <div className="hidden h-4 w-16 animate-pulse rounded bg-border/60 md:block" />
+      <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:block" />
+      <div className="hidden h-4 w-16 animate-pulse rounded bg-border/60 md:block" />
+      <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:block" />
+      <div className="ml-auto h-5 w-10 animate-pulse rounded bg-border/60" />
+    </div>
+  );
 }
 
-function isRushPoint(day: TournamentDay) {
-  return /point\s*rush|rush\s*point/i.test(day.name);
+function TeamLogo({
+  teamId,
+  teamName,
+}: {
+  teamId: number;
+  teamName: string;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <div className="h-10 w-10 shrink-0 rounded-full border border-border" />
+    );
+  }
+
+  return (
+    <img
+      src={`/logos/${teamId}.png`}
+      alt={teamName}
+      onError={() => setFailed(true)}
+      className="h-10 w-10 shrink-0 rounded-full border border-border bg-background object-contain p-1"
+    />
+  );
 }
 
-function isGrandFinal(day: TournamentDay) {
-  return /grand\s*final/i.test(day.name);
-}
+function mergePlacementResults(
+  results: PlacementTeam[][],
+): PlacementTeam[] {
+  const merged = new Map<number, PlacementTeam>();
 
-function isLeagueDay(day: TournamentDay) {
-  return /^week\s*\d+\s+day\s*\d+/i.test(day.name);
-}
+  for (const list of results) {
+    for (const team of list) {
+      const existing = merged.get(team.team_id);
 
-function sortLeagueDays(days: TournamentDay[]) {
-  return [...days].sort((a, b) => {
-    const weekA = weekNumber(a.name);
-    const weekB = weekNumber(b.name);
+      if (existing) {
+        existing.points += team.points;
+        existing.kills += team.kills;
+        existing.placement_points += team.placement_points;
+        existing.booyahs += team.booyahs;
+        existing.rooms_played += team.rooms_played;
+      } else {
+        merged.set(team.team_id, { ...team });
+      }
+    }
+  }
 
-    if (weekA !== weekB) {
-      return weekA - weekB;
+  return [...merged.values()].sort((a, b) => {
+    if (b.points !== a.points) {
+      return b.points - a.points;
     }
 
-    return dayNumber(a.name) - dayNumber(b.name);
+    if (b.kills !== a.kills) {
+      return b.kills - a.kills;
+    }
+
+    return a.team_name.localeCompare(b.team_name);
   });
 }
 
-export default function PlacementPage() {
-  const [phase, setPhase] = useState<Phase>("league");
+function PlacementContent() {
+  const searchParams = useSearchParams();
 
   const [days, setDays] = useState<TournamentDay[]>([]);
-  const [rooms, setRooms] = useState<Room[]>([]);
-
-  const [selectedWeek, setSelectedWeek] = useState(1);
-  const [selectedDay, setSelectedDay] = useState<number | null>(null);
-  const [selectedRoom, setSelectedRoom] = useState<number | null>(null);
-
-  const [resultView, setResultView] = useState<ResultView>("day");
-
   const [placement, setPlacement] = useState<PlacementTeam[]>([]);
-  const [loadingDays, setLoadingDays] = useState(true);
-  const [loadingRooms, setLoadingRooms] = useState(false);
-  const [loadingPlacement, setLoadingPlacement] = useState(true);
-  const [error, setError] = useState("");
 
-  /*
-   * Load all tournament days.
-   */
-  useEffect(() => {
-    async function loadDays() {
-      try {
-        setLoadingDays(true);
-        setError("");
+  const [phase, setPhase] = useState<Phase>(
+    (searchParams.get("phase") as Phase) || "league",
+  );
 
-        const data = await api.days();
-        const list = asArray<TournamentDay>(data);
+  const [week, setWeek] = useState<number | "all" | null>(() => {
+    const value = searchParams.get("week");
 
-        setDays(list);
-
-        const leagueDays = sortLeagueDays(
-          list.filter((day) => isLeagueDay(day)),
-        );
-
-        if (leagueDays.length > 0) {
-          setSelectedWeek(weekNumber(leagueDays[0].name));
-          setSelectedDay(leagueDays[0].id);
-        }
-      } catch (err) {
-        setError(errorMessage(err));
-      } finally {
-        setLoadingDays(false);
-      }
-    }
-
-    loadDays();
-  }, []);
-
-  /*
-   * League weeks.
-   */
-  const leagueWeeks = useMemo(() => {
-    const weeks = days
-      .filter((day) => isLeagueDay(day))
-      .map((day) => weekNumber(day.name))
-      .filter((week) => week > 0);
-
-    return [...new Set(weeks)].sort((a, b) => a - b);
-  }, [days]);
-
-  /*
-   * League days for selected week.
-   */
-  const leagueDays = useMemo(() => {
-    return sortLeagueDays(
-      days.filter(
-        (day) =>
-          isLeagueDay(day) && weekNumber(day.name) === selectedWeek,
-      ),
-    );
-  }, [days, selectedWeek]);
-
-  /*
-   * Rush Point day.
-   */
-  const rushDay = useMemo(() => {
-    return days.find((day) => isRushPoint(day)) ?? null;
-  }, [days]);
-
-  /*
-   * Grand Final day.
-   */
-  const grandFinalDay = useMemo(() => {
-    return days.find((day) => isGrandFinal(day)) ?? null;
-  }, [days]);
-
-  /*
-   * Current selected day.
-   */
-  const currentDay = useMemo(() => {
-    if (selectedDay === null) {
+    if (!value) {
       return null;
     }
 
-    return days.find((day) => day.id === selectedDay) ?? null;
-  }, [days, selectedDay]);
+    return value === "all" ? "all" : Number(value);
+  });
+
+  const [dayId, setDayId] = useState<string>(
+    searchParams.get("day") ?? "all",
+  );
+
+  const [loading, setLoading] = useState(true);
+  const [daysLoading, setDaysLoading] = useState(true);
+  const [error, setError] = useState("");
 
   /*
-   * Load rooms whenever the selected day changes.
+   * Load tournament days once.
    */
   useEffect(() => {
-    async function loadRooms() {
-      if (selectedDay === null) {
-        setRooms([]);
-        return;
-      }
-
-      try {
-        setLoadingRooms(true);
-        setError("");
-
-        const data = await api.rooms(selectedDay);
-        setRooms(asArray<Room>(data));
-      } catch (err) {
+    api
+      .days()
+      .then((data) => {
+        setDays(asArray<TournamentDay>(data));
+      })
+      .catch((err) => {
         setError(errorMessage(err));
-        setRooms([]);
-      } finally {
-        setLoadingRooms(false);
+      })
+      .finally(() => {
+        setDaysLoading(false);
+      });
+  }, []);
+
+  /*
+   * Group tournament days.
+   */
+  const grouped = useMemo(() => {
+    const league = new Map<number, TournamentDay[]>();
+    const rush: TournamentDay[] = [];
+    const final: TournamentDay[] = [];
+
+    for (const day of days) {
+      const parsed = parseDayName(day.name);
+
+      if (parsed.phase === "league" && parsed.week) {
+        const list = league.get(parsed.week) ?? [];
+
+        list.push(day);
+        league.set(parsed.week, list);
+      } else if (parsed.phase === "rush") {
+        rush.push(day);
+      } else if (parsed.phase === "final") {
+        final.push(day);
       }
     }
 
-    loadRooms();
-  }, [selectedDay]);
+    const sortDays = (list: TournamentDay[]) =>
+      [...list].sort((a, b) => dayNumber(a) - dayNumber(b));
+
+    const leagueSorted = new Map(
+      [...league.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([weekNumber, list]) => [
+          weekNumber,
+          sortDays(list),
+        ]),
+    );
+
+    return {
+      league: leagueSorted,
+      rush: sortDays(rush),
+      final: sortDays(final),
+    };
+  }, [days]);
+
+  const weeks = [...grouped.league.keys()];
 
   /*
-   * Load placement.
+   * Default League Phase to Overall.
    */
   useEffect(() => {
-    async function loadPlacement() {
-      setLoadingPlacement(true);
-      setError("");
+    if (
+      !daysLoading &&
+      phase === "league" &&
+      week === null &&
+      weeks.length > 0
+    ) {
+      setWeek("all");
+    }
+  }, [daysLoading, phase, week, weeks]);
 
+  /*
+   * Current days according to selected phase/week.
+   */
+  const currentDays = useMemo(() => {
+    if (phase === "league") {
+      if (week === "all") {
+        return [...grouped.league.values()].flat();
+      }
+
+      if (week !== null) {
+        return grouped.league.get(week) ?? [];
+      }
+
+      return [];
+    }
+
+    if (phase === "rush") {
+      return grouped.rush;
+    }
+
+    return grouped.final;
+  }, [phase, week, grouped]);
+
+  /*
+   * Keep URL shareable.
+   */
+  useEffect(() => {
+    const url = new URL(window.location.href);
+
+    url.searchParams.set("phase", phase);
+
+    if (phase === "league" && week !== null) {
+      url.searchParams.set("week", String(week));
+    } else {
+      url.searchParams.delete("week");
+    }
+
+    if (dayId !== "all") {
+      url.searchParams.set("day", dayId);
+    } else {
+      url.searchParams.delete("day");
+    }
+
+    window.history.replaceState({}, "", url);
+  }, [phase, week, dayId]);
+
+  /*
+   * If selected day no longer belongs to the current scope,
+   * reset to All Days.
+   */
+  useEffect(() => {
+    if (
+      dayId !== "all" &&
+      !currentDays.some((day) => String(day.id) === dayId)
+    ) {
+      setDayId("all");
+    }
+  }, [currentDays, dayId]);
+
+  /*
+   * Fetch placement.
+   *
+   * For "All Days", we fetch every day in the current scope
+   * and aggregate them client-side.
+   */
+  useEffect(() => {
+    if (currentDays.length === 0) {
+      setPlacement([]);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    setLoading(true);
+    setError("");
+
+    async function load() {
       try {
-        let data: unknown;
+        /*
+         * Specific day.
+         */
+        if (dayId !== "all") {
+          const data = await api.placementDay(Number(dayId));
 
-        if (resultView === "room" && selectedRoom !== null) {
-          data = await api.placementRoom(selectedRoom);
-        } else if (selectedDay !== null) {
-          data = await api.placementDay(selectedDay);
-        } else {
-          setPlacement([]);
+          if (!cancelled) {
+            setPlacement(asArray<PlacementTeam>(data));
+          }
+
           return;
         }
 
-        setPlacement(asArray<PlacementTeam>(data));
+        /*
+         * All days in the current scope.
+         */
+        const results = await Promise.all(
+          currentDays.map(async (day) => {
+            const data = await api.placementDay(day.id);
+
+            return asArray<PlacementTeam>(data);
+          }),
+        );
+
+        const combined = mergePlacementResults(results);
+
+        if (!cancelled) {
+          setPlacement(combined);
+        }
       } catch (err) {
-        setError(errorMessage(err));
-        setPlacement([]);
+        if (!cancelled) {
+          setError(errorMessage(err));
+          setPlacement([]);
+        }
       } finally {
-        setLoadingPlacement(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    loadPlacement();
-  }, [selectedDay, selectedRoom, resultView]);
+    load();
 
-  /*
-   * Select League Phase.
-   */
-  function selectLeague() {
-    setPhase("league");
-    setResultView("day");
-    setSelectedRoom(null);
+    return () => {
+      cancelled = true;
+    };
+  }, [currentDays, dayId]);
 
-    const firstDay =
-      leagueDays[0] ??
-      sortLeagueDays(days.filter((day) => isLeagueDay(day)))[0];
+  function handlePhaseChange(next: Phase) {
+    setPhase(next);
+    setDayId("all");
 
-    if (firstDay) {
-      setSelectedWeek(weekNumber(firstDay.name));
-      setSelectedDay(firstDay.id);
+    if (next === "league") {
+      setWeek("all");
+    } else {
+      setWeek(null);
     }
   }
 
-  /*
-   * Select Rush Point.
-   */
-  function selectRush() {
-    setPhase("rush");
-    setResultView("day");
-    setSelectedRoom(null);
+  function handleWeekChange(next: number | "all") {
+    setWeek(next);
+    setDayId("all");
+  }
 
-    if (rushDay) {
-      setSelectedDay(rushDay.id);
+  const scopeLabel = useMemo(() => {
+    if (dayId !== "all") {
+      const selected = currentDays.find(
+        (day) => String(day.id) === dayId,
+      );
+
+      return selected?.name ?? "Selected Day";
     }
-  }
 
-  /*
-   * Select Grand Final.
-   */
-  function selectGrandFinal() {
-    setPhase("grand-final");
-    setResultView("day");
-    setSelectedRoom(null);
+    if (phase === "league") {
+      if (week === "all") {
+        return "League Phase — Overall";
+      }
 
-    if (grandFinalDay) {
-      setSelectedDay(grandFinalDay.id);
+      return `Week ${week} — Overall`;
     }
-  }
 
-  /*
-   * Select a week.
-   */
-  function selectWeek(week: number) {
-    setSelectedWeek(week);
-    setResultView("day");
-    setSelectedRoom(null);
-
-    const firstDay = sortLeagueDays(
-      days.filter(
-        (day) =>
-          isLeagueDay(day) && weekNumber(day.name) === week,
-      ),
-    )[0];
-
-    if (firstDay) {
-      setSelectedDay(firstDay.id);
+    if (phase === "rush") {
+      return "Rush Point — Overall";
     }
-  }
 
-  /*
-   * Select a day.
-   */
-  function selectDay(day: TournamentDay) {
-    setSelectedDay(day.id);
-    setSelectedRoom(null);
-    setResultView("day");
-  }
-
-  /*
-   * Select a room.
-   */
-  function selectRoom(roomId: number) {
-    setSelectedRoom(roomId);
-    setResultView("room");
-  }
-
-  const gridCols =
-    "grid-cols-[55px_1fr_120px_90px_120px_100px_90px]";
+    return "Grand Final — Overall";
+  }, [phase, week, dayId, currentDays]);
 
   return (
-    <main className="min-h-screen bg-black px-4 py-8 text-white md:px-8">
-      <div className="mx-auto max-w-6xl">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight">
-            Placement
-          </h1>
+    <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
+      <Link href="/" className="eyebrow">
+        ← FF / FANTASY
+      </Link>
 
-          <p className="mt-2 text-sm text-zinc-400">
-            Tournament standings and match results
+      <p className="eyebrow mt-10">Team standings</p>
+
+      <div className="flex flex-wrap items-end justify-between gap-6">
+        <div>
+          <h1 className="section-title">Placement.</h1>
+
+          <p className="mt-3 text-muted-foreground">
+            Follow team performance across the tournament.
           </p>
         </div>
 
-        {/* Phase selector */}
-        <div className="mb-8 grid grid-cols-1 gap-3 md:grid-cols-3">
-          {/* League */}
-          <button
-            onClick={selectLeague}
-            className={`group relative overflow-hidden rounded-2xl border p-5 text-left transition ${
-              phase === "league"
-                ? "border-white bg-white text-black"
-                : "border-zinc-800 bg-zinc-950 text-white hover:border-zinc-600 hover:bg-zinc-900"
-            }`}
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p
-                  className={`text-xs font-semibold uppercase tracking-wider ${
-                    phase === "league"
-                      ? "text-zinc-600"
-                      : "text-zinc-500"
-                  }`}
-                >
-                  Phase 1
-                </p>
+        <Link
+          href="/schedule"
+          className="text-sm font-semibold hover:text-primary"
+        >
+          Tournament Schedule →
+        </Link>
+      </div>
 
-                <h2 className="mt-1 text-lg font-bold">
-                  League Phase
-                </h2>
+      <div className="mt-10">
+        {/* ========================= */}
+        {/* PHASE */}
+        {/* ========================= */}
 
-                <p
-                  className={`mt-2 text-sm ${
-                    phase === "league"
-                      ? "text-zinc-600"
-                      : "text-zinc-500"
-                  }`}
-                >
-                  3 weeks · 9 days · 54 rooms
-                </p>
-              </div>
-
-              <div
-                className={`flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold ${
-                  phase === "league"
-                    ? "bg-black text-white"
-                    : "bg-zinc-900 text-zinc-400"
-                }`}
-              >
-                01
-              </div>
-            </div>
-          </button>
-
-          {/* Rush Point */}
-          <button
-            onClick={selectRush}
-            disabled={!rushDay}
-            className={`group relative overflow-hidden rounded-2xl border p-5 text-left transition ${
-              phase === "rush"
-                ? "border-white bg-white text-black"
-                : "border-zinc-800 bg-zinc-950 text-white hover:border-zinc-600 hover:bg-zinc-900"
-            } ${!rushDay ? "cursor-not-allowed opacity-50" : ""}`}
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p
-                  className={`text-xs font-semibold uppercase tracking-wider ${
-                    phase === "rush"
-                      ? "text-zinc-600"
-                      : "text-zinc-500"
-                  }`}
-                >
-                  Phase 2
-                </p>
-
-                <h2 className="mt-1 text-lg font-bold">
-                  Rush Point
-                </h2>
-
-                <p
-                  className={`mt-2 text-sm ${
-                    phase === "rush"
-                      ? "text-zinc-600"
-                      : "text-zinc-500"
-                  }`}
-                >
-                  {rushDay ? "Special phase" : "Coming soon"}
-                </p>
-              </div>
-
-              <div
-                className={`flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold ${
-                  phase === "rush"
-                    ? "bg-black text-white"
-                    : "bg-zinc-900 text-zinc-400"
-                }`}
-              >
-                02
-              </div>
-            </div>
-          </button>
-
-          {/* Grand Final */}
-          <button
-            onClick={selectGrandFinal}
-            disabled={!grandFinalDay}
-            className={`group relative overflow-hidden rounded-2xl border p-5 text-left transition ${
-              phase === "grand-final"
-                ? "border-white bg-white text-black"
-                : "border-zinc-800 bg-zinc-950 text-white hover:border-zinc-600 hover:bg-zinc-900"
-            } ${!grandFinalDay ? "cursor-not-allowed opacity-50" : ""}`}
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p
-                  className={`text-xs font-semibold uppercase tracking-wider ${
-                    phase === "grand-final"
-                      ? "text-zinc-600"
-                      : "text-zinc-500"
-                  }`}
-                >
-                  Phase 3
-                </p>
-
-                <h2 className="mt-1 text-lg font-bold">
-                  Grand Final
-                </h2>
-
-                <p
-                  className={`mt-2 text-sm ${
-                    phase === "grand-final"
-                      ? "text-zinc-600"
-                      : "text-zinc-500"
-                  }`}
-                >
-                  {grandFinalDay ? "8 rooms" : "Coming soon"}
-                </p>
-              </div>
-
-              <div
-                className={`flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold ${
-                  phase === "grand-final"
-                    ? "bg-black text-white"
-                    : "bg-zinc-900 text-zinc-400"
-                }`}
-              >
-                03
-              </div>
-            </div>
-          </button>
+        <div className="flex flex-wrap gap-2">
+          {PHASES.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => handlePhaseChange(p.id)}
+              className={`border border-border px-5 py-3 text-sm font-semibold transition ${
+                phase === p.id
+                  ? "bg-foreground text-background"
+                  : "hover:bg-muted"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
 
-        {/* Loading days */}
-        {loadingDays ? (
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-8 text-center text-zinc-500">
-            Loading tournament...
-          </div>
-        ) : (
-          <>
-            {/* ===================== */}
-            {/* LEAGUE PHASE */}
-            {/* ===================== */}
-            {phase === "league" && (
-              <div className="mb-8">
-                {/* Week selector */}
-                <div className="mb-5">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div>
-                      <h2 className="font-semibold">League Phase</h2>
-                      <p className="mt-1 text-sm text-zinc-500">
-                        Select a week and match day
-                      </p>
-                    </div>
-                  </div>
+        {/* ========================= */}
+        {/* LEAGUE WEEKS */}
+        {/* ========================= */}
 
-                  <div className="grid grid-cols-3 gap-2">
-                    {leagueWeeks.map((week) => (
-                      <button
-                        key={week}
-                        onClick={() => selectWeek(week)}
-                        className={`rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                          selectedWeek === week
-                            ? "border-white bg-white text-black"
-                            : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-600 hover:text-white"
-                        }`}
-                      >
-                        Week {week}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+        {phase === "league" && weeks.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => handleWeekChange("all")}
+              className={`border border-border px-4 py-2 text-xs font-semibold transition ${
+                week === "all"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              Overall
+            </button>
 
-                {/* Days */}
-                <div>
-                  <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                    Week {selectedWeek} · Match Days
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    {leagueDays.map((day) => (
-                      <button
-                        key={day.id}
-                        onClick={() => selectDay(day)}
-                        className={`rounded-xl border p-4 text-left transition ${
-                          selectedDay === day.id
-                            ? "border-white bg-zinc-100 text-black"
-                            : "border-zinc-800 bg-zinc-950 hover:border-zinc-600 hover:bg-zinc-900"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p
-                              className={`text-xs font-medium uppercase ${
-                                selectedDay === day.id
-                                  ? "text-zinc-500"
-                                  : "text-zinc-600"
-                              }`}
-                            >
-                              Day {dayNumber(day.name)}
-                            </p>
-
-                            <p className="mt-1 font-semibold">
-                              {day.name}
-                            </p>
-                          </div>
-
-                          <div
-                            className={`rounded-lg px-2.5 py-1 text-xs font-bold ${
-                              selectedDay === day.id
-                                ? "bg-black text-white"
-                                : "bg-zinc-900 text-zinc-500"
-                            }`}
-                          >
-                            6 Rooms
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ===================== */}
-            {/* RUSH POINT */}
-            {/* ===================== */}
-            {phase === "rush" && rushDay && (
-              <div className="mb-8">
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                        Phase 2
-                      </p>
-
-                      <h2 className="mt-1 text-xl font-bold">
-                        {rushDay.name}
-                      </h2>
-
-                      <p className="mt-1 text-sm text-zinc-500">
-                        Rush Point standings
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl bg-zinc-900 px-4 py-2 text-sm text-zinc-400">
-                      Selected
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ===================== */}
-            {/* GRAND FINAL */}
-            {/* ===================== */}
-            {phase === "grand-final" && grandFinalDay && (
-              <div className="mb-8">
-                <div className="mb-5 rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                        Phase 3
-                      </p>
-
-                      <h2 className="mt-1 text-xl font-bold">
-                        Grand Final
-                      </h2>
-
-                      <p className="mt-1 text-sm text-zinc-500">
-                        8 rooms · 12 teams
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-300">
-                      Final
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ===================== */}
-            {/* ROOM NAVIGATION */}
-            {/* ===================== */}
-            {selectedDay !== null &&
-              (phase === "league" || phase === "grand-final") && (
-                <div className="mb-8">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                        {currentDay?.name}
-                      </p>
-
-                      <h2 className="mt-1 font-semibold">
-                        Match Results
-                      </h2>
-                    </div>
-
-                    {loadingRooms && (
-                      <span className="text-xs text-zinc-600">
-                        Loading rooms...
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {/* Day standings */}
-                    <button
-                      onClick={() => {
-                        setResultView("day");
-                        setSelectedRoom(null);
-                      }}
-                      className={`rounded-lg px-4 py-2.5 text-sm font-medium transition ${
-                        resultView === "day"
-                          ? "bg-white text-black"
-                          : "border border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-600 hover:text-white"
-                      }`}
-                    >
-                      Day Standings
-                    </button>
-
-                    {/* Rooms */}
-                    {rooms.map((room, index) => (
-                      <button
-                        key={room.id}
-                        onClick={() => selectRoom(room.id)}
-                        className={`rounded-lg px-4 py-2.5 text-sm font-medium transition ${
-                          selectedRoom === room.id &&
-                          resultView === "room"
-                            ? "bg-white text-black"
-                            : "border border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-600 hover:text-white"
-                        }`}
-                      >
-                        {room.name ?? `Room ${index + 1}`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-            {/* Rush Point room navigation if it has rooms */}
-            {selectedDay !== null &&
-              phase === "rush" &&
-              rooms.length > 0 && (
-                <div className="mb-8">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                        {currentDay?.name}
-                      </p>
-
-                      <h2 className="mt-1 font-semibold">
-                        Match Results
-                      </h2>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => {
-                        setResultView("day");
-                        setSelectedRoom(null);
-                      }}
-                      className={`rounded-lg px-4 py-2.5 text-sm font-medium transition ${
-                        resultView === "day"
-                          ? "bg-white text-black"
-                          : "border border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-600 hover:text-white"
-                      }`}
-                    >
-                      Day Standings
-                    </button>
-
-                    {rooms.map((room, index) => (
-                      <button
-                        key={room.id}
-                        onClick={() => selectRoom(room.id)}
-                        className={`rounded-lg px-4 py-2.5 text-sm font-medium transition ${
-                          selectedRoom === room.id &&
-                          resultView === "room"
-                            ? "bg-white text-black"
-                            : "border border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-600 hover:text-white"
-                        }`}
-                      >
-                        {room.name ?? `Room ${index + 1}`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-          </>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div className="mb-6 rounded-xl border border-red-900 bg-red-950/30 p-4 text-sm text-red-400">
-            {error}
-          </div>
-        )}
-
-        {/* Current selection */}
-        {currentDay && (
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-zinc-600">
-                {resultView === "room"
-                  ? rooms.find((room) => room.id === selectedRoom)?.name ??
-                    "Room"
-                  : "Standings"}
-              </p>
-
-              <h2 className="mt-1 text-lg font-bold">
-                {currentDay.name}
-              </h2>
-            </div>
-
-            {resultView === "room" && (
+            {weeks.map((w) => (
               <button
-                onClick={() => {
-                  setResultView("day");
-                  setSelectedRoom(null);
-                }}
-                className="text-sm text-zinc-500 transition hover:text-white"
+                key={w}
+                type="button"
+                onClick={() => handleWeekChange(w)}
+                className={`border border-border px-4 py-2 text-xs font-semibold transition ${
+                  week === w
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "text-muted-foreground hover:bg-muted"
+                }`}
               >
-                ← Back to day
+                Week {w}
               </button>
-            )}
+            ))}
           </div>
         )}
 
-        {/* Placement table */}
-        <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950">
+        {/* ========================= */}
+        {/* DAYS */}
+        {/* ========================= */}
+
+        {currentDays.length > 0 && (
+          <div className="mt-5 flex flex-wrap items-center gap-2 border-l border-border pl-4">
+            <button
+              type="button"
+              onClick={() => setDayId("all")}
+              className={`px-3 py-2 text-xs font-semibold transition ${
+                dayId === "all"
+                  ? "text-foreground underline decoration-primary underline-offset-4"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              All Days
+            </button>
+
+            {currentDays.map((day) => (
+              <button
+                key={day.id}
+                type="button"
+                onClick={() => setDayId(String(day.id))}
+                className={`px-3 py-2 text-xs font-semibold transition ${
+                  dayId === String(day.id)
+                    ? "text-foreground underline decoration-primary underline-offset-4"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Day {dayNumber(day)}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ========================= */}
+        {/* ERROR */}
+        {/* ========================= */}
+
+        {error && (
+          <p className="mt-8 text-sm text-muted-foreground">
+            {error}
+          </p>
+        )}
+
+        {/* ========================= */}
+        {/* CURRENT SCOPE */}
+        {/* ========================= */}
+
+        <div className="mt-10 flex items-end justify-between gap-4">
+          <div>
+            <p className="eyebrow">Standings</p>
+
+            <h2 className="mt-2 text-xl font-bold">
+              {scopeLabel}
+            </h2>
+          </div>
+        </div>
+
+        {/* ========================= */}
+        {/* TABLE */}
+        {/* ========================= */}
+
+        <div className="mt-5 overflow-x-auto border-y border-border">
           <div className="min-w-[850px]">
             {/* Header */}
-            <div
-              className={`grid ${gridCols} gap-4 border-b border-zinc-800 bg-zinc-900 px-5 py-4 text-xs font-semibold uppercase tracking-wide text-zinc-400`}
-            >
-              <div>#</div>
-              <div>Team</div>
-              <div>Total Points</div>
-              <div>Kills</div>
-              <div>Placement</div>
-              <div>Booyahs</div>
-              <div>Rooms</div>
+            <div className="grid grid-cols-[60px_1fr_120px_100px_120px_100px_100px] gap-4 border-b border-border px-4 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              <span>#</span>
+              <span>Team</span>
+              <span>Total Points</span>
+              <span>Kills</span>
+              <span>Placement</span>
+              <span>Booyahs</span>
+              <span>Rooms</span>
             </div>
 
             {/* Loading */}
-            {loadingPlacement ? (
-              <div className="p-10 text-center text-zinc-500">
-                Loading standings...
+            {loading || daysLoading ? (
+              <>
+                {Array.from({ length: 8 }).map((_, index) => (
+                  <PlacementRowSkeleton key={index} />
+                ))}
+              </>
+            ) : currentDays.length === 0 ? (
+              <div className="px-4 py-10 text-center text-muted-foreground">
+                No tournament days available.
               </div>
             ) : placement.length === 0 ? (
-              <div className="p-10 text-center text-zinc-500">
+              <div className="px-4 py-10 text-center text-muted-foreground">
                 No placement data available.
               </div>
             ) : (
               placement.map((team, index) => (
                 <div
                   key={team.team_id}
-                  className={`grid ${gridCols} items-center gap-4 border-b border-zinc-900 px-5 py-4 text-sm last:border-b-0 ${
-                    index === 0
-                      ? "bg-white/[0.025]"
-                      : ""
-                  }`}
+                  className="grid grid-cols-[60px_1fr_120px_100px_120px_100px_100px] items-center gap-4 border-b border-border px-4 py-5 last:border-b-0"
                 >
                   {/* Rank */}
-                  <div className="font-bold text-zinc-400">
+                  <span className="font-mono text-sm text-muted-foreground">
                     {index + 1}
-                  </div>
+                  </span>
 
                   {/* Team */}
-                  <div className="flex items-center gap-3 font-semibold">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-900">
-                      <img
-                        src={`/logos/${team.team_id}.png`}
-                        alt={team.team_name}
-                        className="h-8 w-8 object-contain"
-                      />
-                    </div>
+                  <div className="flex min-w-0 items-center gap-4">
+                    <TeamLogo
+                      teamId={team.team_id}
+                      teamName={team.team_name}
+                    />
 
-                    <span>{team.team_name}</span>
+                    <span className="truncate font-semibold">
+                      {team.team_name}
+                    </span>
                   </div>
 
                   {/* Total */}
-                  <div className="font-bold">
+                  <span className="font-mono text-lg font-bold">
                     {team.points}
-                  </div>
+                  </span>
 
                   {/* Kills */}
-                  <div>{team.kills}</div>
+                  <span className="font-mono">
+                    {team.kills}
+                  </span>
 
                   {/* Placement */}
-                  <div>{team.placement_points}</div>
+                  <span className="font-mono">
+                    {team.placement_points}
+                  </span>
 
                   {/* Booyahs */}
                   <div className="flex items-center gap-1">
@@ -817,20 +631,22 @@ export default function PlacementPage() {
                         <img
                           src="/booyah.png"
                           alt="Booyah"
-                          className="h-12 w-12 object-contain"
+                          className="h-10 w-10 object-contain"
                         />
 
-                        <span>x{team.booyahs}</span>
+                        <span className="font-mono">
+                          x{team.booyahs}
+                        </span>
                       </>
                     ) : (
-                      "—"
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </div>
 
                   {/* Rooms */}
-                  <div className="text-zinc-400">
+                  <span className="font-mono text-muted-foreground">
                     {team.rooms_played}
-                  </div>
+                  </span>
                 </div>
               ))
             )}
@@ -838,5 +654,13 @@ export default function PlacementPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function PlacementPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen" />}>
+      <PlacementContent />
+    </Suspense>
   );
 }
