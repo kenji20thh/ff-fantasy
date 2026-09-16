@@ -7,7 +7,12 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { asArray, errorMessage } from "@/lib/types";
 
-import type { PlacementTeam, Room, TournamentDay } from "@/lib/types";
+import type {
+  PlacementTeam,
+  Room,
+  RoomStats,
+  TournamentDay,
+} from "@/lib/types";
 
 type Phase = "league" | "rush" | "final";
 
@@ -167,11 +172,124 @@ function roomLabel(room: Room, index: number) {
   return `Room ${index + 1}`;
 }
 
+function placementPoints(placement: number) {
+  switch (placement) {
+    case 1:
+      return 12;
+    case 2:
+      return 9;
+    case 3:
+      return 8;
+    case 4:
+      return 7;
+    case 5:
+      return 6;
+    case 6:
+      return 5;
+    case 7:
+      return 4;
+    case 8:
+      return 3;
+    case 9:
+      return 2;
+    case 10:
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function buildRoomPlacement(
+  stats: RoomStats[],
+  baseTeams: PlacementTeam[],
+): PlacementTeam[] {
+  const grouped = new Map<
+    number,
+    {
+      team_id: number;
+      team_name: string;
+      placement: number;
+      kills: number;
+    }
+  >();
+
+  const teamNames = new Map<number, string>();
+
+  for (const team of baseTeams) {
+    teamNames.set(team.team_id, team.team_name);
+  }
+
+  for (const stat of stats) {
+    const teamId = stat.player?.team_id;
+
+    if (typeof teamId !== "number") {
+      continue;
+    }
+
+    const existing = grouped.get(teamId);
+
+    if (existing) {
+      existing.kills += stat.kills;
+
+      /*
+       * A team's placement is the placement of its best player.
+       * This matches the backend's room-level team grouping logic.
+       */
+      if (
+        stat.placement > 0 &&
+        (existing.placement <= 0 || stat.placement < existing.placement)
+      ) {
+        existing.placement = stat.placement;
+      }
+    } else {
+      grouped.set(teamId, {
+        team_id: teamId,
+        team_name: teamNames.get(teamId) ?? `Team ${teamId}`,
+        placement: stat.placement,
+        kills: stat.kills,
+      });
+    }
+  }
+
+  return [...grouped.values()]
+    .map((team) => {
+      const placement = team.placement;
+      const placementPts = placementPoints(placement);
+
+      return {
+        team_id: team.team_id,
+        team_name: team.team_name,
+        starting_points: 0,
+        placement_points: placementPts,
+        kills: team.kills,
+        points: placementPts + team.kills,
+        rooms_played: 1,
+        booyahs: placement === 1 ? 1 : 0,
+      };
+    })
+    .sort((a, b) => {
+      if (b.points !== a.points) {
+        return b.points - a.points;
+      }
+
+      if (b.kills !== a.kills) {
+        return b.kills - a.kills;
+      }
+
+      if (b.placement_points !== a.placement_points) {
+        return b.placement_points - a.placement_points;
+      }
+
+      return a.team_name.localeCompare(b.team_name);
+    });
+}
+
 function PlacementContent() {
   const searchParams = useSearchParams();
 
   const [days, setDays] = useState<TournamentDay[]>([]);
   const [teams, setTeams] = useState<PlacementTeam[]>([]);
+  const [baseTeams, setBaseTeams] = useState<PlacementTeam[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
 
@@ -344,17 +462,27 @@ function PlacementContent() {
     return () => {
       cancelled = true;
     };
-  }, [selectedDay]);
+  }, [selectedDay?.id]);
 
   /*
-   * Load normal placement:
+   * Load normal placement.
    *
    * - Overall / Week / All Days => merge day standings
    * - A specific Day            => day standings
-   * - A selected Room           => room standings
+   *
+   * Room placement is intentionally handled separately below
+   * using api.roomStats().
    */
   useEffect(() => {
     if (loadingDays) {
+      return;
+    }
+
+    /*
+     * Do not reload the normal placement while viewing a room.
+     * The room effect below owns the displayed teams in that case.
+     */
+    if (selectedRoomId !== null) {
       return;
     }
 
@@ -365,27 +493,10 @@ function PlacementContent() {
         setLoadingPlacement(true);
         setError("");
 
-        /*
-         * If a room is selected, show room-level placement.
-         */
-        if (selectedRoomId !== null) {
-          const response = await api.placementRoom(selectedRoomId);
-          const data = asArray<PlacementTeam>(response);
-
-          if (!cancelled) {
-            setTeams(data);
-          }
-
-          return;
-        }
-
-        /*
-         * No selected room:
-         * show day/week/overall placement.
-         */
         if (selectedDays.length === 0) {
           if (!cancelled) {
             setTeams([]);
+            setBaseTeams([]);
           }
 
           return;
@@ -404,12 +515,14 @@ function PlacementContent() {
         const merged = mergePlacementResults(parsedResults);
 
         if (!cancelled) {
+          setBaseTeams(merged);
           setTeams(merged);
         }
       } catch (err) {
         if (!cancelled) {
           setError(errorMessage(err));
           setTeams([]);
+          setBaseTeams([]);
         }
       } finally {
         if (!cancelled) {
@@ -424,6 +537,53 @@ function PlacementContent() {
       cancelled = true;
     };
   }, [loadingDays, selectedDays, selectedRoomId]);
+
+  /*
+   * Load room placement.
+   *
+   * IMPORTANT:
+   * We use the existing /api/rooms/:id/stats endpoint.
+   *
+   * No /api/placement?scope=room call is made here.
+   */
+  useEffect(() => {
+    if (selectedRoomId === null) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadRoomPlacement() {
+      try {
+        setLoadingPlacement(true);
+        setError("");
+
+        const response = await api.roomStats(selectedRoomId);
+        const stats = asArray<RoomStats>(response);
+
+        const roomTeams = buildRoomPlacement(stats, baseTeams);
+
+        if (!cancelled) {
+          setTeams(roomTeams);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(errorMessage(err));
+          setTeams([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingPlacement(false);
+        }
+      }
+    }
+
+    loadRoomPlacement();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRoomId, baseTeams]);
 
   function buildUrl(next: {
     phase?: Phase;
@@ -442,9 +602,6 @@ function PlacementContent() {
       params.set("week", nextWeek);
     }
 
-    /*
-     * Day is useful for every phase, not only League.
-     */
     params.set("day", nextDay);
 
     return `/placement?${params.toString()}`;
@@ -466,6 +623,16 @@ function PlacementContent() {
     return [...uniqueDays.entries()].sort(([a], [b]) => a - b);
   }, [currentDays]);
 
+  /*
+   * League Overall:
+   *   no day selector
+   *
+   * League Week:
+   *   All Days / Day 1 / Day 2 / Day 3
+   *
+   * Rush / Final:
+   *   All Days / Day 1 / Day 2 / ...
+   */
   const showDaySelector =
     currentDays.length > 0 &&
     (activePhase !== "league" || week !== "all");
@@ -569,10 +736,10 @@ function PlacementContent() {
                 day === String(dayNumberValue)
                   ? "border-foreground bg-foreground text-background"
                   : "border-border text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Day {dayNumberValue}
-          </Link>
+              }`}
+            >
+              Day {dayNumberValue}
+            </Link>
           ))}
         </div>
       )}
@@ -592,7 +759,10 @@ function PlacementContent() {
             {selectedRoomId !== null && (
               <button
                 type="button"
-                onClick={() => setSelectedRoomId(null)}
+                onClick={() => {
+                  setSelectedRoomId(null);
+                  setTeams(baseTeams);
+                }}
                 className="text-xs font-medium text-muted-foreground transition hover:text-foreground"
               >
                 View Day
@@ -602,14 +772,14 @@ function PlacementContent() {
 
           {loadingRooms ? (
             <div className="flex flex-wrap gap-2">
-              {Array.from({ length: selectedDay?.room_count || 6 }).map(
-                (_, index) => (
-                  <div
-                    key={index}
-                    className="h-9 w-20 animate-pulse rounded-md bg-border/60"
-                  />
-                ),
-              )}
+              {Array.from({
+                length: selectedDay?.room_count || 6,
+              }).map((_, index) => (
+                <div
+                  key={index}
+                  className="h-9 w-20 animate-pulse rounded-md bg-border/60"
+                />
+              ))}
             </div>
           ) : rooms.length === 0 ? (
             <div className="rounded-md border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
