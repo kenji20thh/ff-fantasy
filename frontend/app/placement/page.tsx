@@ -730,7 +730,7 @@ function PlacementContent() {
     return `/placement?${params.toString()}`;
   }
 
-  const showStartingPoints = activePhase === "final";
+  const showStartingPoints = activePhase === "final" && day === "all" && selectedRoomId === null;
 
   const dayButtons = useMemo(() => {
     const uniqueDays = new Map<number, TournamentDay>();
