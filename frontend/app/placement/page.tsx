@@ -411,7 +411,7 @@ function PlacementContent() {
       )}
 
       {/* Days */}
-      {activePhase === "league" && currentDays.length > 0 && (
+      {activePhase === "league" && week != "all" && currentDays.length > 0 && (
         <div className="mb-8 flex flex-wrap gap-2">
           <Link
             href={buildUrl({
