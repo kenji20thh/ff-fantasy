@@ -228,27 +228,32 @@ team_totals AS (
 )
 
 SELECT
-	tt.team_id,
-	tt.team_name,
-	tt.placement_points,
-	tt.kills,
+	t.id AS team_id,
+	t.name AS team_name,
+
+	COALESCE(tt.placement_points, 0)::int AS placement_points,
+	COALESCE(tt.kills, 0)::int AS kills,
 
 	COALESCE(tdtt.starting_points, 0)::int AS starting_points,
 
 	(
 		COALESCE(tdtt.starting_points, 0)
-		+ tt.placement_points
-		+ tt.kills
+		+ COALESCE(tt.placement_points, 0)
+		+ COALESCE(tt.kills, 0)
 	)::int AS points,
 
-	tt.rooms_played,
-	tt.booyahs
+	COALESCE(tt.rooms_played, 0)::int AS rooms_played,
+	COALESCE(tt.booyahs, 0)::int AS booyahs
 
-FROM team_totals tt
+FROM tournament_day_teams tdtt
 
-LEFT JOIN tournament_day_teams tdtt
-	ON tdtt.team_id = tt.team_id
-	AND tdtt.tournament_day_id = $1
+JOIN teams t
+	ON t.id = tdtt.team_id
+
+LEFT JOIN team_totals tt
+	ON tt.team_id = tdtt.team_id
+
+WHERE tdtt.tournament_day_id = $1
 
 ORDER BY points DESC, kills DESC, team_name;
 `
