@@ -165,6 +165,7 @@ export type PlayerRanking = {
 export type PlacementTeam = {
   team_id: number
   team_name: string
+  starting_points: number
   placement_points: number
   kills: number
   points: number

@@ -32,17 +32,13 @@ function parseDayName(name: string): {
     };
   }
 
-  const rush = name.match(/^.*rush.*$/i);
-
-  if (rush) {
+  if (/rush/i.test(name)) {
     return {
       phase: "rush",
     };
   }
 
-  const final = name.match(/^grand\s*final/i);
-
-  if (final) {
+  if (/^grand\s*final/i.test(name)) {
     return {
       phase: "final",
     };
@@ -65,9 +61,28 @@ function dayNumber(day: TournamentDay) {
   return match ? Number(match[1]) : 0;
 }
 
-function PlacementRowSkeleton() {
+function TeamLogo({ teamId, teamName }: { teamId: number; teamName: string }) {
   return (
-    <div className="grid grid-cols-[50px_1fr_auto] items-center gap-4 border-b border-border px-4 py-5 last:border-b-0 md:grid-cols-[60px_1fr_120px_100px_120px_100px_100px]">
+    <img
+      src={`/logos/${teamId}.png`}
+      alt={teamName}
+      className="h-10 w-10 shrink-0 rounded-full object-contain"
+      onError={(event) => {
+        event.currentTarget.style.display = "none";
+      }}
+    />
+  );
+}
+
+function PlacementRowSkeleton({ showStarting }: { showStarting: boolean }) {
+  return (
+    <div
+      className={`grid items-center gap-4 border-b border-border px-4 py-5 last:border-b-0 ${
+        showStarting
+          ? "grid-cols-[50px_1fr_auto] md:grid-cols-[60px_1fr_110px_110px_100px_120px_100px_100px]"
+          : "grid-cols-[50px_1fr_auto] md:grid-cols-[60px_1fr_120px_100px_120px_100px_100px]"
+      }`}
+    >
       <div className="h-4 w-5 animate-pulse rounded bg-border/60" />
 
       <div className="flex min-w-0 items-center gap-4">
@@ -75,43 +90,22 @@ function PlacementRowSkeleton() {
         <div className="h-4 w-32 animate-pulse rounded bg-border/60" />
       </div>
 
+      {showStarting && (
+        <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:block" />
+      )}
+
       <div className="hidden h-4 w-16 animate-pulse rounded bg-border/60 md:block" />
       <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:block" />
       <div className="hidden h-4 w-16 animate-pulse rounded bg-border/60 md:block" />
       <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:block" />
+      <div className="hidden h-4 w-12 animate-pulse rounded bg-border/60 md:block" />
+
       <div className="ml-auto h-5 w-10 animate-pulse rounded bg-border/60" />
     </div>
   );
 }
 
-function TeamLogo({
-  teamId,
-  teamName,
-}: {
-  teamId: number;
-  teamName: string;
-}) {
-  const [failed, setFailed] = useState(false);
-
-  if (failed) {
-    return (
-      <div className="h-10 w-10 shrink-0 rounded-full border border-border" />
-    );
-  }
-
-  return (
-    <img
-      src={`/logos/${teamId}.png`}
-      alt={teamName}
-      onError={() => setFailed(true)}
-      className="h-10 w-10 shrink-0 rounded-full border border-border bg-background object-contain p-1"
-    />
-  );
-}
-
-function mergePlacementResults(
-  results: PlacementTeam[][],
-): PlacementTeam[] {
+function mergePlacementResults(results: PlacementTeam[][]): PlacementTeam[] {
   const merged = new Map<number, PlacementTeam>();
 
   for (const list of results) {
@@ -147,511 +141,395 @@ function PlacementContent() {
   const searchParams = useSearchParams();
 
   const [days, setDays] = useState<TournamentDay[]>([]);
-  const [placement, setPlacement] = useState<PlacementTeam[]>([]);
-
-  const [phase, setPhase] = useState<Phase>(
-    (searchParams.get("phase") as Phase) || "league",
-  );
-
-  const [week, setWeek] = useState<number | "all" | null>(() => {
-    const value = searchParams.get("week");
-
-    if (!value) {
-      return null;
-    }
-
-    return value === "all" ? "all" : Number(value);
-  });
-
-  const [dayId, setDayId] = useState<string>(
-    searchParams.get("day") ?? "all",
-  );
-
-  const [loading, setLoading] = useState(true);
-  const [daysLoading, setDaysLoading] = useState(true);
+  const [teams, setTeams] = useState<PlacementTeam[]>([]);
+  const [loadingDays, setLoadingDays] = useState(true);
+  const [loadingPlacement, setLoadingPlacement] = useState(true);
   const [error, setError] = useState("");
 
-  /*
-   * Load tournament days once.
-   */
+  const phase = (searchParams.get("phase") as Phase) || "league";
+  const week = searchParams.get("week") || "all";
+  const day = searchParams.get("day") || "all";
+
+  const activePhase: Phase = PHASES.some((item) => item.id === phase)
+    ? phase
+    : "league";
+
   useEffect(() => {
-    api
-      .days()
-      .then((data) => {
-        setDays(asArray<TournamentDay>(data));
-      })
-      .catch((err) => {
-        setError(errorMessage(err));
-      })
-      .finally(() => {
-        setDaysLoading(false);
-      });
+    let cancelled = false;
+
+    async function loadDays() {
+      try {
+        setLoadingDays(true);
+        setError("");
+
+        const response = await api.days();
+        const data = asArray<TournamentDay>(response);
+
+        if (!cancelled) {
+          setDays(data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(errorMessage(err));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingDays(false);
+        }
+      }
+    }
+
+    loadDays();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  /*
-   * Group tournament days.
-   */
   const grouped = useMemo(() => {
     const league = new Map<number, TournamentDay[]>();
     const rush: TournamentDay[] = [];
     const final: TournamentDay[] = [];
 
-    for (const day of days) {
-      const parsed = parseDayName(day.name);
+    for (const tournamentDay of days) {
+      const parsed = parseDayName(tournamentDay.name);
 
       if (parsed.phase === "league" && parsed.week) {
-        const list = league.get(parsed.week) ?? [];
+        const existing = league.get(parsed.week) || [];
+        existing.push(tournamentDay);
+        league.set(parsed.week, existing);
+      }
 
-        list.push(day);
-        league.set(parsed.week, list);
-      } else if (parsed.phase === "rush") {
-        rush.push(day);
-      } else if (parsed.phase === "final") {
-        final.push(day);
+      if (parsed.phase === "rush") {
+        rush.push(tournamentDay);
+      }
+
+      if (parsed.phase === "final") {
+        final.push(tournamentDay);
       }
     }
 
-    const sortDays = (list: TournamentDay[]) =>
-      [...list].sort((a, b) => dayNumber(a) - dayNumber(b));
+    for (const value of league.values()) {
+      value.sort((a, b) => dayNumber(a) - dayNumber(b));
+    }
 
-    const leagueSorted = new Map(
-      [...league.entries()]
-        .sort(([a], [b]) => a - b)
-        .map(([weekNumber, list]) => [
-          weekNumber,
-          sortDays(list),
-        ]),
-    );
+    rush.sort((a, b) => dayNumber(a) - dayNumber(b));
+    final.sort((a, b) => dayNumber(a) - dayNumber(b));
 
     return {
-      league: leagueSorted,
-      rush: sortDays(rush),
-      final: sortDays(final),
+      league,
+      rush,
+      final,
     };
   }, [days]);
 
-  const weeks = [...grouped.league.keys()];
+  const weeks = useMemo(() => {
+    return [...grouped.league.keys()].sort((a, b) => a - b);
+  }, [grouped.league]);
 
-  /*
-   * Default League Phase to Overall.
-   */
-  useEffect(() => {
-    if (
-      !daysLoading &&
-      phase === "league" &&
-      week === null &&
-      weeks.length > 0
-    ) {
-      setWeek("all");
-    }
-  }, [daysLoading, phase, week, weeks]);
-
-  /*
-   * Current days according to selected phase/week.
-   */
   const currentDays = useMemo(() => {
-    if (phase === "league") {
-      if (week === "all") {
-        return [...grouped.league.values()].flat();
-      }
-
-      if (week !== null) {
-        return grouped.league.get(week) ?? [];
-      }
-
-      return [];
-    }
-
-    if (phase === "rush") {
+    if (activePhase === "rush") {
       return grouped.rush;
     }
 
-    return grouped.final;
-  }, [phase, week, grouped]);
-
-  /*
-   * Keep URL shareable.
-   */
-  useEffect(() => {
-    const url = new URL(window.location.href);
-
-    url.searchParams.set("phase", phase);
-
-    if (phase === "league" && week !== null) {
-      url.searchParams.set("week", String(week));
-    } else {
-      url.searchParams.delete("week");
+    if (activePhase === "final") {
+      return grouped.final;
     }
 
-    if (dayId !== "all") {
-      url.searchParams.set("day", dayId);
-    } else {
-      url.searchParams.delete("day");
+    if (week === "all") {
+      return weeks.flatMap(
+        (weekNumber) => grouped.league.get(weekNumber) || [],
+      );
     }
 
-    window.history.replaceState({}, "", url);
-  }, [phase, week, dayId]);
+    const weekNumber = Number(week);
 
-  /*
-   * If selected day no longer belongs to the current scope,
-   * reset to All Days.
-   */
-  useEffect(() => {
-    if (
-      dayId !== "all" &&
-      !currentDays.some((day) => String(day.id) === dayId)
-    ) {
-      setDayId("all");
+    return grouped.league.get(weekNumber) || [];
+  }, [activePhase, grouped, week, weeks]);
+
+  const selectedDays = useMemo(() => {
+    if (day === "all") {
+      return currentDays;
     }
-  }, [currentDays, dayId]);
 
-  /*
-   * Fetch placement.
-   *
-   * For "All Days", we fetch every day in the current scope
-   * and aggregate them client-side.
-   */
+    const dayNumberValue = Number(day);
+
+    return currentDays.filter(
+      (tournamentDay) => dayNumber(tournamentDay) === dayNumberValue,
+    );
+  }, [currentDays, day]);
+
   useEffect(() => {
-    if (currentDays.length === 0) {
-      setPlacement([]);
-      setLoading(false);
+    if (loadingDays) {
       return;
     }
 
     let cancelled = false;
 
-    setLoading(true);
-    setError("");
-
-    async function load() {
+    async function loadPlacement() {
       try {
-        /*
-         * Specific day.
-         */
-        if (dayId !== "all") {
-          const data = await api.placementDay(Number(dayId));
+        setLoadingPlacement(true);
+        setError("");
 
+        if (selectedDays.length === 0) {
           if (!cancelled) {
-            setPlacement(asArray<PlacementTeam>(data));
+            setTeams([]);
           }
-
           return;
         }
 
-        /*
-         * All days in the current scope.
-         */
         const results = await Promise.all(
-          currentDays.map(async (day) => {
-            const data = await api.placementDay(day.id);
-
-            return asArray<PlacementTeam>(data);
-          }),
+          selectedDays.map((tournamentDay) =>
+            api.placementDay(tournamentDay.id),
+          ),
         );
 
-        const combined = mergePlacementResults(results);
+        const parsedResults = results.map((result) =>
+          asArray<PlacementTeam>(result),
+        );
+
+        const merged = mergePlacementResults(parsedResults);
 
         if (!cancelled) {
-          setPlacement(combined);
+          setTeams(merged);
         }
       } catch (err) {
         if (!cancelled) {
           setError(errorMessage(err));
-          setPlacement([]);
+          setTeams([]);
         }
       } finally {
         if (!cancelled) {
-          setLoading(false);
+          setLoadingPlacement(false);
         }
       }
     }
 
-    load();
+    loadPlacement();
 
     return () => {
       cancelled = true;
     };
-  }, [currentDays, dayId]);
+  }, [loadingDays, selectedDays]);
 
-  function handlePhaseChange(next: Phase) {
-    setPhase(next);
-    setDayId("all");
+  function buildUrl(next: { phase?: Phase; week?: string; day?: string }) {
+    const nextPhase = next.phase ?? activePhase;
+    const params = new URLSearchParams();
 
-    if (next === "league") {
-      setWeek("all");
-    } else {
-      setWeek(null);
-    }
-  }
+    params.set("phase", nextPhase);
 
-  function handleWeekChange(next: number | "all") {
-    setWeek(next);
-    setDayId("all");
-  }
-
-  const scopeLabel = useMemo(() => {
-    if (dayId !== "all") {
-      const selected = currentDays.find(
-        (day) => String(day.id) === dayId,
-      );
-
-      return selected?.name ?? "Selected Day";
+    if (nextPhase === "league") {
+      params.set("week", next.week ?? week);
+      params.set("day", next.day ?? day);
     }
 
-    if (phase === "league") {
-      if (week === "all") {
-        return "League Phase — Overall";
+    return `/placement?${params.toString()}`;
+  }
+
+  const showStartingPoints = activePhase === "final";
+
+  const dayButtons = useMemo(() => {
+    const uniqueDays = new Map<number, TournamentDay>();
+
+    for (const tournamentDay of currentDays) {
+      const number = dayNumber(tournamentDay);
+
+      if (number > 0) {
+        uniqueDays.set(number, tournamentDay);
       }
-
-      return `Week ${week} — Overall`;
     }
 
-    if (phase === "rush") {
-      return "Rush Point — Overall";
-    }
-
-    return "Grand Final — Overall";
-  }, [phase, week, dayId, currentDays]);
+    return [...uniqueDays.entries()].sort(([a], [b]) => a - b);
+  }, [currentDays]);
 
   return (
-    <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
-      <Link href="/" className="eyebrow">
-        ← FF / FANTASY
-      </Link>
-
-      <p className="eyebrow mt-10">Team standings</p>
-
-      <div className="flex flex-wrap items-end justify-between gap-6">
-        <div>
-          <h1 className="section-title">Placement.</h1>
-
-          <p className="mt-3 text-muted-foreground">
-            Follow team performance across the tournament.
-          </p>
-        </div>
-
-        <Link
-          href="/schedule"
-          className="text-sm font-semibold hover:text-primary"
-        >
-          Tournament Schedule →
-        </Link>
+    <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mb-8">
+        <p className="eyebrow mb-2">Tournament</p>
+        <h1 className="section-title">Placement</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Team standings across the tournament.
+        </p>
       </div>
 
-      <div className="mt-10">
-        {/* ========================= */}
-        {/* PHASE */}
-        {/* ========================= */}
+      {/* Main phases */}
+      <div className="mb-6 flex flex-wrap gap-2">
+        {PHASES.map((item) => (
+          <Link
+            key={item.id}
+            href={buildUrl({
+              phase: item.id,
+              week: item.id === "league" ? "all" : undefined,
+            })}
+            className={`rounded-md border px-4 py-2 text-sm font-medium transition ${
+              activePhase === item.id
+                ? "border-foreground bg-foreground text-background"
+                : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+            }`}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </div>
 
-        <div className="flex flex-wrap gap-2">
-          {PHASES.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => handlePhaseChange(p.id)}
-              className={`border border-border px-5 py-3 text-sm font-semibold transition ${
-                phase === p.id
-                  ? "bg-foreground text-background"
-                  : "hover:bg-muted"
+      {/* League weeks */}
+      {activePhase === "league" && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Link
+            href={buildUrl({
+              phase: "league",
+              week: "all",
+              day: "all",
+            })}
+            className={`rounded-md border px-3 py-1.5 text-sm transition ${
+              week === "all"
+                ? "border-foreground bg-foreground text-background"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Overall
+          </Link>
+
+          {weeks.map((weekNumber) => (
+            <Link
+              key={weekNumber}
+              href={buildUrl({
+                phase: "league",
+                week: String(weekNumber),
+                day: "all",
+              })}
+              className={`rounded-md border px-3 py-1.5 text-sm transition ${
+                week === String(weekNumber)
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border text-muted-foreground hover:text-foreground"
               }`}
             >
-              {p.label}
-            </button>
+              Week {weekNumber}
+            </Link>
           ))}
         </div>
+      )}
 
-        {/* ========================= */}
-        {/* LEAGUE WEEKS */}
-        {/* ========================= */}
+      {/* Days */}
+      {activePhase === "league" && currentDays.length > 0 && (
+        <div className="mb-8 flex flex-wrap gap-2">
+          <Link
+            href={buildUrl({
+              day: "all",
+            })}
+            className={`rounded-md border px-3 py-1.5 text-sm transition ${
+              day === "all"
+                ? "border-foreground bg-foreground text-background"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            All Days
+          </Link>
 
-        {phase === "league" && weeks.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => handleWeekChange("all")}
-              className={`border border-border px-4 py-2 text-xs font-semibold transition ${
-                week === "all"
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "text-muted-foreground hover:bg-muted"
+          {dayButtons.map(([dayNumberValue]) => (
+            <Link
+              key={dayNumberValue}
+              href={buildUrl({
+                day: String(dayNumberValue),
+              })}
+              className={`rounded-md border px-3 py-1.5 text-sm transition ${
+                day === String(dayNumberValue)
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-border text-muted-foreground hover:text-foreground"
               }`}
             >
-              Overall
-            </button>
+              Day {dayNumberValue}
+            </Link>
+          ))}
+        </div>
+      )}
 
-            {weeks.map((w) => (
-              <button
-                key={w}
-                type="button"
-                onClick={() => handleWeekChange(w)}
-                className={`border border-border px-4 py-2 text-xs font-semibold transition ${
-                  week === w
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                Week {w}
-              </button>
-            ))}
-          </div>
-        )}
+      {error && (
+        <div className="mb-6 rounded-md border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm text-red-500">
+          {error}
+        </div>
+      )}
 
-        {/* ========================= */}
-        {/* DAYS */}
-        {/* ========================= */}
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
+        {/* Desktop header */}
+        <div
+          className={`hidden border-b border-border bg-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground md:grid ${
+            showStartingPoints
+              ? "grid-cols-[60px_1fr_110px_110px_100px_120px_100px_100px]"
+              : "grid-cols-[60px_1fr_120px_100px_120px_100px_100px]"
+          }`}
+        >
+          <div>#</div>
+          <div>Team</div>
 
-        {currentDays.length > 0 && (
-          <div className="mt-5 flex flex-wrap items-center gap-2 border-l border-border pl-4">
-            <button
-              type="button"
-              onClick={() => setDayId("all")}
-              className={`px-3 py-2 text-xs font-semibold transition ${
-                dayId === "all"
-                  ? "text-foreground underline decoration-primary underline-offset-4"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              All Days
-            </button>
+          {showStartingPoints && <div>Starting</div>}
 
-            {currentDays.map((day) => (
-              <button
-                key={day.id}
-                type="button"
-                onClick={() => setDayId(String(day.id))}
-                className={`px-3 py-2 text-xs font-semibold transition ${
-                  dayId === String(day.id)
-                    ? "text-foreground underline decoration-primary underline-offset-4"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Day {dayNumber(day)}
-              </button>
-            ))}
-          </div>
-        )}
+          <div>Total</div>
+          <div>Kills</div>
+          <div>Placement</div>
+          <div>Booyahs</div>
+          <div>Rooms</div>
+        </div>
 
-        {/* ========================= */}
-        {/* ERROR */}
-        {/* ========================= */}
-
-        {error && (
-          <p className="mt-8 text-sm text-muted-foreground">
-            {error}
-          </p>
-        )}
-
-        {/* ========================= */}
-        {/* CURRENT SCOPE */}
-        {/* ========================= */}
-
-        <div className="mt-10 flex items-end justify-between gap-4">
+        {loadingDays || loadingPlacement ? (
           <div>
-            <p className="eyebrow">Standings</p>
-
-            <h2 className="mt-2 text-xl font-bold">
-              {scopeLabel}
-            </h2>
+            {Array.from({ length: 8 }).map((_, index) => (
+              <PlacementRowSkeleton
+                key={index}
+                showStarting={showStartingPoints}
+              />
+            ))}
           </div>
-        </div>
-
-        {/* ========================= */}
-        {/* TABLE */}
-        {/* ========================= */}
-
-        <div className="mt-5 overflow-x-auto border-y border-border">
-          <div className="min-w-[850px]">
-            {/* Header */}
-            <div className="grid grid-cols-[60px_1fr_120px_100px_120px_100px_100px] gap-4 border-b border-border px-4 py-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              <span>#</span>
-              <span>Team</span>
-              <span>Total Points</span>
-              <span>Kills</span>
-              <span>Placement</span>
-              <span>Booyahs</span>
-              <span>Rooms</span>
-            </div>
-
-            {/* Loading */}
-            {loading || daysLoading ? (
-              <>
-                {Array.from({ length: 8 }).map((_, index) => (
-                  <PlacementRowSkeleton key={index} />
-                ))}
-              </>
-            ) : currentDays.length === 0 ? (
-              <div className="px-4 py-10 text-center text-muted-foreground">
-                No tournament days available.
+        ) : teams.length === 0 ? (
+          <div className="px-6 py-16 text-center">
+            <p className="text-sm text-muted-foreground">
+              No placement data available.
+            </p>
+          </div>
+        ) : (
+          teams.map((team, index) => (
+            <div
+              key={team.team_id}
+              className={`grid items-center gap-4 border-b border-border px-4 py-4 last:border-b-0 ${
+                showStartingPoints
+                  ? "grid-cols-[50px_1fr_auto] md:grid-cols-[60px_1fr_110px_110px_100px_120px_100px_100px]"
+                  : "grid-cols-[50px_1fr_auto] md:grid-cols-[60px_1fr_120px_100px_120px_100px_100px]"
+              }`}
+            >
+              <div className="text-sm font-semibold text-muted-foreground">
+                {index + 1}
               </div>
-            ) : placement.length === 0 ? (
-              <div className="px-4 py-10 text-center text-muted-foreground">
-                No placement data available.
+
+              <div className="flex min-w-0 items-center gap-4">
+                <TeamLogo teamId={team.team_id} teamName={team.team_name} />
+
+                <span className="truncate text-sm font-semibold">
+                  {team.team_name}
+                </span>
               </div>
-            ) : (
-              placement.map((team, index) => (
-                <div
-                  key={team.team_id}
-                  className="grid grid-cols-[60px_1fr_120px_100px_120px_100px_100px] items-center gap-4 border-b border-border px-4 py-5 last:border-b-0"
-                >
-                  {/* Rank */}
-                  <span className="font-mono text-sm text-muted-foreground">
-                    {index + 1}
-                  </span>
 
-                  {/* Team */}
-                  <div className="flex min-w-0 items-center gap-4">
-                    <TeamLogo
-                      teamId={team.team_id}
-                      teamName={team.team_name}
-                    />
-
-                    <span className="truncate font-semibold">
-                      {team.team_name}
-                    </span>
-                  </div>
-
-                  {/* Total */}
-                  <span className="font-mono text-lg font-bold">
-                    {team.points}
-                  </span>
-
-                  {/* Kills */}
-                  <span className="font-mono">
-                    {team.kills}
-                  </span>
-
-                  {/* Placement */}
-                  <span className="font-mono">
-                    {team.placement_points}
-                  </span>
-
-                  {/* Booyahs */}
-                  <div className="flex items-center gap-1">
-                    {team.booyahs > 0 ? (
-                      <>
-                        <img
-                          src="/booyah.png"
-                          alt="Booyah"
-                          className="h-10 w-10 object-contain"
-                        />
-
-                        <span className="font-mono">
-                          x{team.booyahs}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </div>
-
-                  {/* Rooms */}
-                  <span className="font-mono text-muted-foreground">
-                    {team.rooms_played}
-                  </span>
+              {showStartingPoints && (
+                <div className="hidden text-sm font-medium md:block">
+                  {team.starting_points}
                 </div>
-              ))
-            )}
-          </div>
-        </div>
+              )}
+
+              <div className="text-right text-base font-bold md:text-left">
+                {team.points}
+              </div>
+
+              <div className="hidden text-sm md:block">{team.kills}</div>
+
+              <div className="hidden text-sm md:block">
+                {team.placement_points}
+              </div>
+
+              <div className="hidden text-sm md:block">{team.booyahs}</div>
+
+              <div className="hidden text-sm md:block">{team.rooms_played}</div>
+            </div>
+          ))
+        )}
       </div>
     </main>
   );
@@ -659,7 +537,22 @@ function PlacementContent() {
 
 export default function PlacementPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen" />}>
+    <Suspense
+      fallback={
+        <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <div className="mb-8">
+            <div className="h-3 w-20 animate-pulse rounded bg-border/60" />
+            <div className="mt-3 h-8 w-40 animate-pulse rounded bg-border/60" />
+          </div>
+
+          <div className="rounded-lg border border-border bg-card">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <PlacementRowSkeleton key={index} showStarting={false} />
+            ))}
+          </div>
+        </main>
+      }
+    >
       <PlacementContent />
     </Suspense>
   );
