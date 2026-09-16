@@ -127,14 +127,6 @@ export default function FantasyTeamBuilderPage() {
   const params = useParams<{ id?: string }>();
   const { user } = useAuth();
 
-  /*
-   * /fantasy-team/builder
-   *     => params.id is "builder" only if this component
-   *        is also being used by the dynamic route.
-   *
-   * /fantasy-team/[id]
-   *     => params.id is the fantasy team ID.
-   */
   const routeId =
     typeof params?.id === "string"
       ? params.id
@@ -209,27 +201,18 @@ export default function FantasyTeamBuilderPage() {
   const [countdown, setCountdown] =
     useState("00:00:00:00");
 
-  /*
-   * Existing fantasy team belongs to another user.
-   */
   const isPublicView =
     viewedFantasyId !== null &&
     fantasyTeam !== null &&
     (!user ||
       fantasyTeam.user_id !== user.id);
 
-  /*
-   * Existing fantasy team belongs to current user.
-   */
   const isEditMode =
     viewedFantasyId !== null &&
     fantasyTeam !== null &&
     !!user &&
     fantasyTeam.user_id === user.id;
 
-  /*
-   * Only builder and owner can edit.
-   */
   const canUseBuilder =
     isBuilderRoute || isEditMode;
 
@@ -248,9 +231,6 @@ export default function FantasyTeamBuilderPage() {
   const canEdit =
     canUseBuilder && !isDayLocked;
 
-  /* -------------------------------------------------------
-     LIVE COUNTDOWN
-  ------------------------------------------------------- */
   useEffect(() => {
     if (!selectedDay?.deadline_at) {
       setCountdown("00:00:00:00");
@@ -311,6 +291,7 @@ export default function FantasyTeamBuilderPage() {
   /* -------------------------------------------------------
      BUDGET
   ------------------------------------------------------- */
+
   const totalPrice = useMemo(() => {
     return selected.reduce(
       (total, player) =>
@@ -335,9 +316,25 @@ export default function FantasyTeamBuilderPage() {
     [selected],
   );
 
+  /*
+   * Same budget calculation specifically used
+   * by the public read-only view.
+   */
+  const publicTotalPrice = useMemo(() => {
+    return selected.reduce(
+      (total, player) =>
+        total + player.price,
+      0,
+    );
+  }, [selected]);
+
+  const publicRemainingBudget =
+    TEAM_BUDGET - publicTotalPrice;
+
   /* -------------------------------------------------------
      POINTS
   ------------------------------------------------------- */
+
   const selectedDayPoints = useMemo(() => {
     if (!selectedDay) {
       return 0;
@@ -381,6 +378,7 @@ export default function FantasyTeamBuilderPage() {
   /* -------------------------------------------------------
      PARTICIPATING TEAMS
   ------------------------------------------------------- */
+
   const participatingTeams = useMemo(() => {
     if (!selectedDay) {
       return [];
@@ -406,6 +404,7 @@ export default function FantasyTeamBuilderPage() {
   /* -------------------------------------------------------
      FILTERED PLAYERS
   ------------------------------------------------------- */
+
   const filteredPlayers = useMemo(() => {
     const query =
       playerSearch.trim().toLowerCase();
@@ -481,8 +480,25 @@ export default function FantasyTeamBuilderPage() {
   }
 
   /* -------------------------------------------------------
+     PLAYER CLICK WHEN DAY IS FINISHED
+  ------------------------------------------------------- */
+
+  function openPlayerStats(
+    playerID: number,
+  ) {
+    /*
+     * Once the tournament day is locked,
+     * clicking the player opens the existing
+     * player page where their room-by-room
+     * statistics can be viewed.
+     */
+    router.push(`/players/${playerID}`);
+  }
+
+  /* -------------------------------------------------------
      LOAD PLAYERS FOR A DAY
   ------------------------------------------------------- */
+
   async function loadDay(
     day: TournamentDay,
     team?: FantasyTeamResponse | null,
@@ -491,10 +507,6 @@ export default function FantasyTeamBuilderPage() {
     setLoadingDay(true);
     setMessage("");
 
-    /*
-     * Only reset these in builder/edit mode.
-     * Public view doesn't have filters/search anyway.
-     */
     if (canUseBuilder) {
       setPlayerSearch("");
       setSelectedTeamFilter(null);
@@ -557,10 +569,6 @@ export default function FantasyTeamBuilderPage() {
         uniquePlayers,
       );
 
-      /*
-       * Restore the fantasy team's selection
-       * for this particular day.
-       */
       const selection =
         team?.days?.find(
           (item) =>
@@ -604,6 +612,7 @@ export default function FantasyTeamBuilderPage() {
   /* -------------------------------------------------------
      INITIAL LOAD
   ------------------------------------------------------- */
+
   async function loadInitialData() {
     setLoading(true);
     setMessage("");
@@ -666,9 +675,6 @@ export default function FantasyTeamBuilderPage() {
             [],
         );
 
-        /*
-         * Load calculated points.
-         */
         try {
           const pointsResponse =
             await api.fantasyPoints(
@@ -689,13 +695,6 @@ export default function FantasyTeamBuilderPage() {
           return;
         }
 
-        /*
-         * For an existing team, prefer the first day
-         * that this fantasy team actually has a selection for.
-         *
-         * This makes /fantasy-team/[id] immediately show
-         * the user's actual team instead of an empty day.
-         */
         const firstSelectedDay =
           loadedDays.find(
             (day) =>
@@ -743,6 +742,7 @@ export default function FantasyTeamBuilderPage() {
        * /fantasy-team/builder
        * =====================================================
        */
+
       const myFantasyResponse =
         await api.myFantasyTeam().catch(
           () => null,
@@ -753,11 +753,6 @@ export default function FantasyTeamBuilderPage() {
           | FantasyTeamResponse
           | null;
 
-      /*
-       * Normally builder is for first creation.
-       * If the user somehow already has a team,
-       * keep its data available.
-       */
       if (myFantasy?.id) {
         setFantasyTeam(
           myFantasy,
@@ -834,6 +829,7 @@ export default function FantasyTeamBuilderPage() {
   /* -------------------------------------------------------
      CHANGE DAY
   ------------------------------------------------------- */
+
   async function changeDay(
     day: TournamentDay,
   ) {
@@ -858,6 +854,7 @@ export default function FantasyTeamBuilderPage() {
   /* -------------------------------------------------------
      SELECT PLAYER
   ------------------------------------------------------- */
+
   function selectPlayer(
     player: Player,
   ) {
@@ -945,6 +942,7 @@ export default function FantasyTeamBuilderPage() {
   /* -------------------------------------------------------
      REMOVE PLAYER
   ------------------------------------------------------- */
+
   function removePlayer(
     playerID: number,
   ) {
@@ -977,6 +975,7 @@ export default function FantasyTeamBuilderPage() {
   /* -------------------------------------------------------
      CAPTAIN
   ------------------------------------------------------- */
+
   function chooseCaptain(
     playerID: number,
   ) {
@@ -1008,6 +1007,7 @@ export default function FantasyTeamBuilderPage() {
   /* -------------------------------------------------------
      SAVE
   ------------------------------------------------------- */
+
   async function save() {
     if (!user) {
       router.push(
@@ -1179,6 +1179,7 @@ export default function FantasyTeamBuilderPage() {
   /* -------------------------------------------------------
      LOADING
   ------------------------------------------------------- */
+
   if (loading) {
     return (
       <main className="min-h-screen bg-background">
@@ -1192,6 +1193,7 @@ export default function FantasyTeamBuilderPage() {
   /* =======================================================
      PUBLIC READ-ONLY VIEW
      ======================================================= */
+
   if (isPublicView) {
     return (
       <main className="min-h-screen bg-background">
@@ -1317,12 +1319,54 @@ export default function FantasyTeamBuilderPage() {
                 </p>
 
                 <p className="text-xs text-muted-foreground">
-                  Fantasy selections for this day
-                  are locked.
+                  Click a player to view their match statistics.
                 </p>
               </div>
             </div>
           )}
+
+          {/* BUDGET + POINTS */}
+          <section className="mb-6 overflow-hidden rounded-2xl border border-border bg-card">
+            <div className="grid grid-cols-2 divide-x divide-border">
+              <div className="p-5 text-center sm:p-6">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                  Budget
+                </p>
+
+                <p className="mt-2 text-3xl font-black sm:text-4xl">
+                  ${publicTotalPrice}
+
+                  <span className="text-base font-bold text-muted-foreground">
+                    {" "}
+                    / ${TEAM_BUDGET}
+                  </span>
+                </p>
+
+                <p className="mt-2 text-xs font-bold text-muted-foreground">
+                  ${publicRemainingBudget} remaining
+                </p>
+              </div>
+
+              <div className="p-5 text-center sm:p-6">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                  Points
+                </p>
+
+                <p className="mt-2 text-3xl font-black text-primary sm:text-4xl">
+                  {selectedDayPoints}
+
+                  <span className="ml-1 text-base font-bold text-muted-foreground">
+                    pts
+                  </span>
+                </p>
+
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {selectedDay?.name ??
+                    "Selected day"}
+                </p>
+              </div>
+            </div>
+          </section>
 
           {/* TEAM */}
           <section className="overflow-hidden rounded-2xl border border-border bg-card p-5 sm:p-8">
@@ -1346,6 +1390,7 @@ export default function FantasyTeamBuilderPage() {
 
                 <p className="mt-1 text-2xl font-black text-primary">
                   {selectedDayPoints}
+
                   <span className="ml-1 text-xs font-bold text-muted-foreground">
                     pts
                   </span>
@@ -1380,12 +1425,24 @@ export default function FantasyTeamBuilderPage() {
                       player.id;
 
                     return (
-                      <div
+                      <button
                         key={player.id}
-                        className={`flex min-h-[190px] flex-col items-center justify-center rounded-2xl border p-5 text-center ${
+                        type="button"
+                        onClick={() => {
+                          if (isDayLocked) {
+                            openPlayerStats(
+                              player.id,
+                            );
+                          }
+                        }}
+                        className={`flex min-h-[210px] flex-col items-center justify-center rounded-2xl border p-5 text-center transition ${
                           isCaptain
                             ? "border-primary bg-primary/10"
                             : "border-border bg-muted/10"
+                        } ${
+                          isDayLocked
+                            ? "cursor-pointer hover:border-primary/50 hover:bg-primary/5"
+                            : "cursor-default"
                         }`}
                       >
                         <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
@@ -1416,12 +1473,18 @@ export default function FantasyTeamBuilderPage() {
                           )}
                         </p>
 
-                        <p className="mt-2 text-sm font-black text-primary">
-                          {getPlayerPoints(
-                            player.id,
-                          )}{" "}
-                          pts
-                        </p>
+                        <div className="mt-2 flex items-center gap-4">
+                          <span className="text-sm font-black">
+                            ${player.price}
+                          </span>
+
+                          <span className="text-sm font-black text-primary">
+                            {getPlayerPoints(
+                              player.id,
+                            )}{" "}
+                            pts
+                          </span>
+                        </div>
 
                         {isCaptain && (
                           <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-primary-foreground">
@@ -1429,7 +1492,13 @@ export default function FantasyTeamBuilderPage() {
                             Captain
                           </div>
                         )}
-                      </div>
+
+                        {isDayLocked && (
+                          <p className="mt-2 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                            View statistics
+                          </p>
+                        )}
+                      </button>
                     );
                   },
                 )}
@@ -1444,6 +1513,7 @@ export default function FantasyTeamBuilderPage() {
   /* =======================================================
      BUILDER / OWNER EDIT VIEW
      ======================================================= */
+
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8">
@@ -1593,8 +1663,8 @@ export default function FantasyTeamBuilderPage() {
               </p>
 
               <p className="text-xs text-muted-foreground">
-                The deadline has passed. Your selection
-                can no longer be changed.
+                Click a selected player to view their
+                match statistics.
               </p>
             </div>
           </div>
@@ -1920,9 +1990,9 @@ export default function FantasyTeamBuilderPage() {
               </h2>
 
               <p className="mt-1 text-xs text-muted-foreground">
-                Click anywhere inside a selected
-                player&apos;s box to make them
-                captain.
+                {isDayLocked
+                  ? "Click a player to view their match statistics."
+                  : "Click anywhere inside a selected player's box to make them captain."}
               </p>
             </div>
 
@@ -1963,18 +2033,30 @@ export default function FantasyTeamBuilderPage() {
                       <button
                         type="button"
                         disabled={
-                          !canEdit ||
-                          saving
+                          !isDayLocked &&
+                          (!canEdit ||
+                            saving)
                         }
-                        onClick={() =>
+                        onClick={() => {
+                          if (isDayLocked) {
+                            openPlayerStats(
+                              player.id,
+                            );
+                            return;
+                          }
+
                           chooseCaptain(
                             player.id,
-                          )
-                        }
+                          );
+                        }}
                         className={`flex min-h-[180px] w-full flex-col items-center justify-center rounded-2xl border p-5 text-center transition ${
                           isCaptain
                             ? "border-primary bg-primary/10"
-                            : "border-border bg-muted/10 hover:border-primary/50"
+                            : "border-border bg-muted/10"
+                        } ${
+                          isDayLocked
+                            ? "cursor-pointer hover:border-primary/50 hover:bg-primary/5"
+                            : "hover:border-primary/50"
                         }`}
                       >
                         <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
@@ -2023,6 +2105,12 @@ export default function FantasyTeamBuilderPage() {
                             <Crown className="h-3 w-3" />
                             Captain
                           </div>
+                        )}
+
+                        {isDayLocked && (
+                          <p className="mt-2 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                            View statistics
+                          </p>
                         )}
                       </button>
 
