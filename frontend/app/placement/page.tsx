@@ -67,13 +67,7 @@ function dayNumber(day: TournamentDay) {
   return match ? Number(match[1]) : 0;
 }
 
-function TeamLogo({
-  teamId,
-  teamName,
-}: {
-  teamId: number;
-  teamName: string;
-}) {
+function TeamLogo({ teamId, teamName }: { teamId: number; teamName: string }) {
   return (
     <img
       src={`/logos/${teamId}.png`}
@@ -95,8 +89,8 @@ function PlacementRowSkeleton({
     <div
       className={`grid items-center gap-4 border-b border-border px-4 py-5 last:border-b-0 ${
         showStarting
-          ? "grid-cols-[50px_1fr_auto] md:grid-cols-[60px_1fr_110px_110px_100px_120px_100px_100px]"
-          : "grid-cols-[50px_1fr_auto] md:grid-cols-[60px_1fr_120px_100px_120px_100px_100px]"
+          ? "grid-cols-[50px_1fr_auto] md:grid-cols-[60px_1fr_100px_100px_100px_100px_100px_100px]"
+          : "grid-cols-[50px_1fr_auto] md:grid-cols-[60px_1fr_100px_100px_100px_100px_100px]"
       }`}
     >
       <div className="h-4 w-5 animate-pulse rounded bg-border/60" />
@@ -121,9 +115,7 @@ function PlacementRowSkeleton({
   );
 }
 
-function mergePlacementResults(
-  results: PlacementTeam[][],
-): PlacementTeam[] {
+function mergePlacementResults(results: PlacementTeam[][]): PlacementTeam[] {
   const merged = new Map<number, PlacementTeam>();
 
   for (const list of results) {
@@ -529,8 +521,7 @@ function PlacementContent() {
     );
   }, [currentDays, day]);
 
-  const selectedDay =
-    selectedDays.length === 1 ? selectedDays[0] : undefined;
+  const selectedDay = selectedDays.length === 1 ? selectedDays[0] : undefined;
 
   /*
    * Load rooms whenever exactly one day is selected.
@@ -721,11 +712,7 @@ function PlacementContent() {
     };
   }, [selectedRoomId, baseTeams, selectedDay, allTeams]);
 
-  function buildUrl(next: {
-    phase?: Phase;
-    week?: string;
-    day?: string;
-  }) {
+  function buildUrl(next: { phase?: Phase; week?: string; day?: string }) {
     const nextPhase = next.phase ?? activePhase;
     const nextWeek = next.week ?? week;
     const nextDay = next.day ?? "all";
@@ -770,8 +757,7 @@ function PlacementContent() {
    *   All Days / Day 1 / Day 2 / ...
    */
   const showDaySelector =
-    currentDays.length > 0 &&
-    (activePhase !== "league" || week !== "all");
+    currentDays.length > 0 && (activePhase !== "league" || week !== "all");
 
   const showRooms = selectedDay !== undefined;
 
@@ -956,10 +942,10 @@ function PlacementContent() {
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         {/* Desktop header */}
         <div
-          className={`hidden border-b border-border bg-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground md:grid ${
+          className={`hidden border-b border-border bg-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground md:grid md:items-center md:gap-4 ${
             showStartingPoints
-              ? "grid-cols-[60px_1fr_110px_110px_100px_120px_100px_100px]"
-              : "grid-cols-[60px_1fr_120px_100px_120px_100px_100px]"
+              ? "grid-cols-[60px_1fr_100px_100px_100px_100px_100px_100px]"
+              : "grid-cols-[60px_1fr_100px_100px_100px_100px_100px]"
           }`}
         >
           <div>#</div>
@@ -996,8 +982,8 @@ function PlacementContent() {
               key={team.team_id}
               className={`grid items-center gap-4 border-b border-border px-4 py-4 last:border-b-0 ${
                 showStartingPoints
-                  ? "grid-cols-[50px_1fr_auto] md:grid-cols-[60px_1fr_110px_110px_100px_120px_100px_100px]"
-                  : "grid-cols-[50px_1fr_auto] md:grid-cols-[60px_1fr_120px_100px_120px_100px_100px]"
+                  ? "grid-cols-[50px_1fr_auto] md:grid-cols-[60px_1fr_100px_100px_100px_100px_100px_100px]"
+                  : "grid-cols-[50px_1fr_auto] md:grid-cols-[60px_1fr_100px_100px_100px_100px_100px]"
               }`}
             >
               <div className="text-sm font-semibold text-muted-foreground">
@@ -1005,10 +991,7 @@ function PlacementContent() {
               </div>
 
               <div className="flex min-w-0 items-center gap-4">
-                <TeamLogo
-                  teamId={team.team_id}
-                  teamName={team.team_name}
-                />
+                <TeamLogo teamId={team.team_id} teamName={team.team_name} />
 
                 <span className="truncate text-sm font-semibold">
                   {team.team_name}
@@ -1061,10 +1044,7 @@ export default function PlacementPage() {
 
           <div className="rounded-lg border border-border bg-card">
             {Array.from({ length: 8 }).map((_, index) => (
-              <PlacementRowSkeleton
-                key={index}
-                showStarting={false}
-              />
+              <PlacementRowSkeleton key={index} showStarting={false} />
             ))}
           </div>
         </main>
