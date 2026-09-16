@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { asArray, errorMessage } from "@/lib/types";
 
-import type { PlacementTeam, TournamentDay } from "@/lib/types";
+import type { PlacementTeam, Room, TournamentDay } from "@/lib/types";
 
 type Phase = "league" | "rush" | "final";
 
@@ -61,7 +61,13 @@ function dayNumber(day: TournamentDay) {
   return match ? Number(match[1]) : 0;
 }
 
-function TeamLogo({ teamId, teamName }: { teamId: number; teamName: string }) {
+function TeamLogo({
+  teamId,
+  teamName,
+}: {
+  teamId: number;
+  teamName: string;
+}) {
   return (
     <img
       src={`/logos/${teamId}.png`}
@@ -74,7 +80,11 @@ function TeamLogo({ teamId, teamName }: { teamId: number; teamName: string }) {
   );
 }
 
-function PlacementRowSkeleton({ showStarting }: { showStarting: boolean }) {
+function PlacementRowSkeleton({
+  showStarting,
+}: {
+  showStarting: boolean;
+}) {
   return (
     <div
       className={`grid items-center gap-4 border-b border-border px-4 py-5 last:border-b-0 ${
@@ -105,7 +115,9 @@ function PlacementRowSkeleton({ showStarting }: { showStarting: boolean }) {
   );
 }
 
-function mergePlacementResults(results: PlacementTeam[][]): PlacementTeam[] {
+function mergePlacementResults(
+  results: PlacementTeam[][],
+): PlacementTeam[] {
   const merged = new Map<number, PlacementTeam>();
 
   for (const list of results) {
@@ -137,13 +149,35 @@ function mergePlacementResults(results: PlacementTeam[][]): PlacementTeam[] {
   });
 }
 
+function roomLabel(room: Room, index: number) {
+  const roomNumber = room["room_number"];
+
+  if (typeof roomNumber === "number") {
+    return `Room ${roomNumber}`;
+  }
+
+  if (typeof roomNumber === "string") {
+    return `Room ${roomNumber}`;
+  }
+
+  if (room.name) {
+    return room.name;
+  }
+
+  return `Room ${index + 1}`;
+}
+
 function PlacementContent() {
   const searchParams = useSearchParams();
 
   const [days, setDays] = useState<TournamentDay[]>([]);
   const [teams, setTeams] = useState<PlacementTeam[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
+
   const [loadingDays, setLoadingDays] = useState(true);
   const [loadingPlacement, setLoadingPlacement] = useState(true);
+  const [loadingRooms, setLoadingRooms] = useState(false);
   const [error, setError] = useState("");
 
   const phase = (searchParams.get("phase") as Phase) || "league";
@@ -196,6 +230,7 @@ function PlacementContent() {
 
       if (parsed.phase === "league" && parsed.week) {
         const existing = league.get(parsed.week) || [];
+
         existing.push(tournamentDay);
         league.set(parsed.week, existing);
       }
@@ -259,6 +294,65 @@ function PlacementContent() {
     );
   }, [currentDays, day]);
 
+  const selectedDay =
+    selectedDays.length === 1 ? selectedDays[0] : undefined;
+
+  /*
+   * Load rooms whenever exactly one day is selected.
+   *
+   * This works for:
+   * - League Week X / Day X
+   * - Rush Point / Day
+   * - Grand Final / Day
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRooms() {
+      setRooms([]);
+      setSelectedRoomId(null);
+
+      if (!selectedDay) {
+        setLoadingRooms(false);
+        return;
+      }
+
+      try {
+        setLoadingRooms(true);
+        setError("");
+
+        const response = await api.rooms(selectedDay.id);
+        const data = asArray<Room>(response);
+
+        if (!cancelled) {
+          setRooms(data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setRooms([]);
+          setError(errorMessage(err));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingRooms(false);
+        }
+      }
+    }
+
+    loadRooms();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDay]);
+
+  /*
+   * Load normal placement:
+   *
+   * - Overall / Week / All Days => merge day standings
+   * - A specific Day            => day standings
+   * - A selected Room           => room standings
+   */
   useEffect(() => {
     if (loadingDays) {
       return;
@@ -271,10 +365,29 @@ function PlacementContent() {
         setLoadingPlacement(true);
         setError("");
 
+        /*
+         * If a room is selected, show room-level placement.
+         */
+        if (selectedRoomId !== null) {
+          const response = await api.placementRoom(selectedRoomId);
+          const data = asArray<PlacementTeam>(response);
+
+          if (!cancelled) {
+            setTeams(data);
+          }
+
+          return;
+        }
+
+        /*
+         * No selected room:
+         * show day/week/overall placement.
+         */
         if (selectedDays.length === 0) {
           if (!cancelled) {
             setTeams([]);
           }
+
           return;
         }
 
@@ -310,18 +423,29 @@ function PlacementContent() {
     return () => {
       cancelled = true;
     };
-  }, [loadingDays, selectedDays]);
+  }, [loadingDays, selectedDays, selectedRoomId]);
 
-  function buildUrl(next: { phase?: Phase; week?: string; day?: string }) {
+  function buildUrl(next: {
+    phase?: Phase;
+    week?: string;
+    day?: string;
+  }) {
     const nextPhase = next.phase ?? activePhase;
+    const nextWeek = next.week ?? week;
+    const nextDay = next.day ?? "all";
+
     const params = new URLSearchParams();
 
     params.set("phase", nextPhase);
 
     if (nextPhase === "league") {
-      params.set("week", next.week ?? week);
-      params.set("day", next.day ?? day);
+      params.set("week", nextWeek);
     }
+
+    /*
+     * Day is useful for every phase, not only League.
+     */
+    params.set("day", nextDay);
 
     return `/placement?${params.toString()}`;
   }
@@ -342,11 +466,19 @@ function PlacementContent() {
     return [...uniqueDays.entries()].sort(([a], [b]) => a - b);
   }, [currentDays]);
 
+  const showDaySelector =
+    currentDays.length > 0 &&
+    (activePhase !== "league" || week !== "all");
+
+  const showRooms = selectedDay !== undefined;
+
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-8">
         <p className="eyebrow mb-2">Tournament</p>
+
         <h1 className="section-title">Placement</h1>
+
         <p className="mt-2 text-sm text-muted-foreground">
           Team standings across the tournament.
         </p>
@@ -360,6 +492,7 @@ function PlacementContent() {
             href={buildUrl({
               phase: item.id,
               week: item.id === "league" ? "all" : undefined,
+              day: "all",
             })}
             className={`rounded-md border px-4 py-2 text-sm font-medium transition ${
               activePhase === item.id
@@ -411,8 +544,8 @@ function PlacementContent() {
       )}
 
       {/* Days */}
-      {activePhase === "league" && week != "all" && currentDays.length > 0 && (
-        <div className="mb-8 flex flex-wrap gap-2">
+      {showDaySelector && (
+        <div className="mb-4 flex flex-wrap gap-2">
           <Link
             href={buildUrl({
               day: "all",
@@ -436,11 +569,74 @@ function PlacementContent() {
                 day === String(dayNumberValue)
                   ? "border-foreground bg-foreground text-background"
                   : "border-border text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Day {dayNumberValue}
-            </Link>
+            }`}
+          >
+            Day {dayNumberValue}
+          </Link>
           ))}
+        </div>
+      )}
+
+      {/* Rooms */}
+      {showRooms && (
+        <div className="mb-8">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold">Rooms</p>
+
+              <p className="mt-1 text-xs text-muted-foreground">
+                Select a room to view its placement.
+              </p>
+            </div>
+
+            {selectedRoomId !== null && (
+              <button
+                type="button"
+                onClick={() => setSelectedRoomId(null)}
+                className="text-xs font-medium text-muted-foreground transition hover:text-foreground"
+              >
+                View Day
+              </button>
+            )}
+          </div>
+
+          {loadingRooms ? (
+            <div className="flex flex-wrap gap-2">
+              {Array.from({ length: selectedDay?.room_count || 6 }).map(
+                (_, index) => (
+                  <div
+                    key={index}
+                    className="h-9 w-20 animate-pulse rounded-md bg-border/60"
+                  />
+                ),
+              )}
+            </div>
+          ) : rooms.length === 0 ? (
+            <div className="rounded-md border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+              No rooms available for this day.
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {rooms.map((room, index) => {
+                const isSelected = selectedRoomId === room.id;
+
+                return (
+                  <button
+                    key={room.id}
+                    type="button"
+                    onClick={() => setSelectedRoomId(room.id)}
+                    className={`rounded-md border px-3 py-1.5 text-sm font-medium transition ${
+                      isSelected
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                    }`}
+                  >
+                    {roomLabel(room, index)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -450,6 +646,7 @@ function PlacementContent() {
         </div>
       )}
 
+      {/* Placement table */}
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         {/* Desktop header */}
         <div
@@ -460,6 +657,7 @@ function PlacementContent() {
           }`}
         >
           <div>#</div>
+
           <div>Team</div>
 
           {showStartingPoints && <div>Starting</div>}
@@ -501,7 +699,10 @@ function PlacementContent() {
               </div>
 
               <div className="flex min-w-0 items-center gap-4">
-                <TeamLogo teamId={team.team_id} teamName={team.team_name} />
+                <TeamLogo
+                  teamId={team.team_id}
+                  teamName={team.team_name}
+                />
 
                 <span className="truncate text-sm font-semibold">
                   {team.team_name}
@@ -518,15 +719,21 @@ function PlacementContent() {
                 {team.points}
               </div>
 
-              <div className="hidden text-sm md:block">{team.kills}</div>
+              <div className="hidden text-sm md:block">
+                {team.kills}
+              </div>
 
               <div className="hidden text-sm md:block">
                 {team.placement_points}
               </div>
 
-              <div className="hidden text-sm md:block">{team.booyahs}</div>
+              <div className="hidden text-sm md:block">
+                {team.booyahs}
+              </div>
 
-              <div className="hidden text-sm md:block">{team.rooms_played}</div>
+              <div className="hidden text-sm md:block">
+                {team.rooms_played}
+              </div>
             </div>
           ))
         )}
@@ -542,12 +749,16 @@ export default function PlacementPage() {
         <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="mb-8">
             <div className="h-3 w-20 animate-pulse rounded bg-border/60" />
+
             <div className="mt-3 h-8 w-40 animate-pulse rounded bg-border/60" />
           </div>
 
           <div className="rounded-lg border border-border bg-card">
             {Array.from({ length: 8 }).map((_, index) => (
-              <PlacementRowSkeleton key={index} showStarting={false} />
+              <PlacementRowSkeleton
+                key={index}
+                showStarting={false}
+              />
             ))}
           </div>
         </main>
