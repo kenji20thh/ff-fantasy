@@ -11,6 +11,7 @@ import type {
   PlacementTeam,
   Room,
   RoomStats,
+  Team,
   TournamentDay,
 } from "@/lib/types";
 
@@ -284,6 +285,93 @@ function buildRoomPlacement(
     });
 }
 
+/*
+ * Roster helpers.
+ *
+ * Placement/stats endpoints only return teams that already have
+ * recorded stats. For Rush Point (no points concept) and Grand
+ * Final (before any room has been scored), that means the table
+ * would otherwise be empty. These helpers build the full team
+ * list for the selected day(s) and zero-fill anything missing.
+ */
+
+function teamRosterForDays(
+  selectedDays: TournamentDay[],
+  allTeams: Team[],
+): Team[] {
+  const perDayTeams: Team[] = [];
+  let anyDayHasTeams = false;
+
+  for (const tournamentDay of selectedDays) {
+    if (!tournamentDay.teams || tournamentDay.teams.length === 0) {
+      continue;
+    }
+
+    anyDayHasTeams = true;
+
+    for (const entry of tournamentDay.teams) {
+      if (typeof entry === "number") {
+        const found = allTeams.find((team) => team.id === entry);
+
+        if (found) {
+          perDayTeams.push(found);
+        }
+      } else {
+        perDayTeams.push(entry);
+      }
+    }
+  }
+
+  // Days don't carry their own roster (yet) — fall back to every team.
+  if (!anyDayHasTeams) {
+    return allTeams;
+  }
+
+  const deduped = new Map<number, Team>();
+
+  for (const team of perDayTeams) {
+    deduped.set(team.id, team);
+  }
+
+  return [...deduped.values()];
+}
+
+function zeroPlacementTeam(team: Team): PlacementTeam {
+  return {
+    team_id: team.id,
+    team_name: team.name,
+    starting_points: 0,
+    placement_points: 0,
+    kills: 0,
+    points: 0,
+    rooms_played: 0,
+    booyahs: 0,
+  };
+}
+
+function fillMissingTeams(
+  teams: PlacementTeam[],
+  roster: Team[],
+): PlacementTeam[] {
+  const present = new Set(teams.map((team) => team.team_id));
+
+  const missing = roster
+    .filter((team) => !present.has(team.id))
+    .map(zeroPlacementTeam);
+
+  return [...teams, ...missing].sort((a, b) => {
+    if (b.points !== a.points) {
+      return b.points - a.points;
+    }
+
+    if (b.kills !== a.kills) {
+      return b.kills - a.kills;
+    }
+
+    return a.team_name.localeCompare(b.team_name);
+  });
+}
+
 function PlacementContent() {
   const searchParams = useSearchParams();
 
@@ -292,6 +380,7 @@ function PlacementContent() {
   const [baseTeams, setBaseTeams] = useState<PlacementTeam[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
+  const [allTeams, setAllTeams] = useState<Team[]>([]);
 
   const [loadingDays, setLoadingDays] = useState(true);
   const [loadingPlacement, setLoadingPlacement] = useState(true);
@@ -332,6 +421,34 @@ function PlacementContent() {
     }
 
     loadDays();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /*
+   * Full team roster, independent of stats. Used as a fallback so
+   * Rush Point / Grand Final still show a team list before any
+   * room has recorded stats.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTeams() {
+      try {
+        const response = await api.teams();
+        const data = asArray<Team>(response);
+
+        if (!cancelled) {
+          setAllTeams(data);
+        }
+      } catch {
+        // Roster is a best-effort fallback; placement still works without it.
+      }
+    }
+
+    loadTeams();
 
     return () => {
       cancelled = true;
@@ -472,6 +589,11 @@ function PlacementContent() {
    *
    * Room placement is intentionally handled separately below
    * using api.roomStats().
+   *
+   * Whatever comes back from the placement endpoints is zero-filled
+   * against the full team roster for the selected day(s), so Rush
+   * Point and Grand Final still show every team before any stats
+   * have been recorded.
    */
   useEffect(() => {
     if (loadingDays) {
@@ -495,8 +617,11 @@ function PlacementContent() {
 
         if (selectedDays.length === 0) {
           if (!cancelled) {
-            setTeams([]);
-            setBaseTeams([]);
+            const roster = teamRosterForDays(selectedDays, allTeams);
+            const filled = fillMissingTeams([], roster);
+
+            setBaseTeams(filled);
+            setTeams(filled);
           }
 
           return;
@@ -513,10 +638,12 @@ function PlacementContent() {
         );
 
         const merged = mergePlacementResults(parsedResults);
+        const roster = teamRosterForDays(selectedDays, allTeams);
+        const filled = fillMissingTeams(merged, roster);
 
         if (!cancelled) {
-          setBaseTeams(merged);
-          setTeams(merged);
+          setBaseTeams(filled);
+          setTeams(filled);
         }
       } catch (err) {
         if (!cancelled) {
@@ -536,7 +663,7 @@ function PlacementContent() {
     return () => {
       cancelled = true;
     };
-  }, [loadingDays, selectedDays, selectedRoomId]);
+  }, [loadingDays, selectedDays, selectedRoomId, allTeams]);
 
   /*
    * Load room placement.
@@ -545,11 +672,16 @@ function PlacementContent() {
    * We use the existing /api/rooms/:id/stats endpoint.
    *
    * No /api/placement?scope=room call is made here.
+   *
+   * Result is zero-filled against the day's roster so a room with
+   * no stats yet still shows the full team list instead of nothing.
    */
   useEffect(() => {
     if (selectedRoomId === null) {
       return;
     }
+
+    const roomId = selectedRoomId;
 
     let cancelled = false;
 
@@ -558,13 +690,17 @@ function PlacementContent() {
         setLoadingPlacement(true);
         setError("");
 
-        const response = await api.roomStats(selectedRoomId);
+        const response = await api.roomStats(roomId);
         const stats = asArray<RoomStats>(response);
 
         const roomTeams = buildRoomPlacement(stats, baseTeams);
+        const roster = selectedDay
+          ? teamRosterForDays([selectedDay], allTeams)
+          : [];
+        const filledRoomTeams = fillMissingTeams(roomTeams, roster);
 
         if (!cancelled) {
-          setTeams(roomTeams);
+          setTeams(filledRoomTeams);
         }
       } catch (err) {
         if (!cancelled) {
@@ -583,7 +719,7 @@ function PlacementContent() {
     return () => {
       cancelled = true;
     };
-  }, [selectedRoomId, baseTeams]);
+  }, [selectedRoomId, baseTeams, selectedDay, allTeams]);
 
   function buildUrl(next: {
     phase?: Phase;
