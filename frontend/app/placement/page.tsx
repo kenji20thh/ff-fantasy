@@ -22,25 +22,29 @@ function parseDayName(name: string): {
   week?: number;
   day?: number;
 } {
-  const league = name.match(/^week\s*(\d+)\s*day\s*(\d+)/i);
+  const normalized = name.trim().toLowerCase();
+
+  // Rush Point must be checked before League.
+  if (normalized.includes("rush")) {
+    return {
+      phase: "rush",
+    };
+  }
+
+  // Grand Final must be checked before League.
+  if (normalized.includes("grand final")) {
+    return {
+      phase: "final",
+    };
+  }
+
+  const league = name.match(/week\s*(\d+)\s*day\s*(\d+)/i);
 
   if (league) {
     return {
       phase: "league",
       week: Number(league[1]),
       day: Number(league[2]),
-    };
-  }
-
-  if (/rush/i.test(name)) {
-    return {
-      phase: "rush",
-    };
-  }
-
-  if (/^grand\s*final/i.test(name)) {
-    return {
-      phase: "final",
     };
   }
 
@@ -229,11 +233,11 @@ function PlacementContent() {
 
   const currentDays = useMemo(() => {
     if (activePhase === "rush") {
-      return grouped.rush;
+      return grouped.rush.slice(0, 1);
     }
 
     if (activePhase === "final") {
-      return grouped.final;
+      return grouped.final.slice(0, 1);
     }
 
     if (week === "all") {
@@ -248,6 +252,11 @@ function PlacementContent() {
   }, [activePhase, grouped, week, weeks]);
 
   const selectedDays = useMemo(() => {
+    // Rush Point and Grand Final each have exactly one day.
+    if (activePhase === "rush" || activePhase === "final") {
+      return currentDays;
+    }
+
     if (day === "all") {
       return currentDays;
     }
@@ -257,7 +266,7 @@ function PlacementContent() {
     return currentDays.filter(
       (tournamentDay) => dayNumber(tournamentDay) === dayNumberValue,
     );
-  }, [currentDays, day]);
+  }, [activePhase, currentDays, day]);
 
   useEffect(() => {
     if (loadingDays) {
