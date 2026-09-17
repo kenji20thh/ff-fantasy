@@ -517,30 +517,6 @@ export default function FantasyTeamBuilderPage() {
     return `/logos/${teamID}.png`;
   }
 
-  /*
-   * Player headshot, served from
-   * public/players/{id}.png
-   */
-  function getPlayerImage(
-    playerID: number,
-  ) {
-    return `/players/${playerID}.png`;
-  }
-
-  /*
-   * Nationality flag, served from
-   * public/flags/{code}.png (e.g. MAR, DZ, TUN, EGY)
-   */
-  function getFlagImage(
-    nationality?: string | null,
-  ) {
-    if (!nationality) {
-      return null;
-    }
-
-    return `/flags/${nationality}.png`;
-  }
-
   function formatDeadline(
     day: TournamentDay,
   ) {
@@ -1472,11 +1448,6 @@ export default function FantasyTeamBuilderPage() {
                         captain ===
                         player.id;
 
-                      const flagSrc =
-                        getFlagImage(
-                          player.nationality,
-                        );
-
                       return (
                         <button
                           key={player.id}
@@ -1492,43 +1463,16 @@ export default function FantasyTeamBuilderPage() {
                               : "border-border bg-muted/10"
                           } cursor-pointer hover:border-primary/50 hover:bg-primary/5`}
                         >
-                          <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
+                          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
                             <img
-                              src={getPlayerImage(
-                                player.id,
+                              src={getTeamLogo(
+                                player.team_id,
                               )}
-                              alt={player.nickname}
-                              className="h-full w-full object-cover"
-                              onError={(
-                                event,
-                              ) => {
-                                event.currentTarget.onerror =
-                                  null;
-                                event.currentTarget.src =
-                                  getTeamLogo(
-                                    player.team_id,
-                                  );
-                                event.currentTarget.className =
-                                  "h-11 w-11 object-contain";
-                              }}
+                              alt={getTeamName(
+                                player.team_id,
+                              )}
+                              className="h-11 w-11 object-contain"
                             />
-
-                            {flagSrc && (
-                              <img
-                                src={flagSrc}
-                                alt={
-                                  player.nationality ??
-                                  "Flag"
-                                }
-                                className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full border border-border bg-background object-cover"
-                                onError={(
-                                  event,
-                                ) => {
-                                  event.currentTarget.style.display =
-                                    "none";
-                                }}
-                              />
-                            )}
                           </div>
 
                           <p
@@ -1595,12 +1539,6 @@ export default function FantasyTeamBuilderPage() {
             )}
             teamLogo={getTeamLogo(
               statsPlayer.team_id,
-            )}
-            playerImage={getPlayerImage(
-              statsPlayer.id,
-            )}
-            flagImage={getFlagImage(
-              statsPlayer.nationality,
             )}
             onClose={() =>
               setStatsPlayer(null)
@@ -2006,11 +1944,6 @@ export default function FantasyTeamBuilderPage() {
                             sameTeam ||
                             wouldExceedBudget);
 
-                        const flagSrc =
-                          getFlagImage(
-                            player.nationality,
-                          );
-
                         return (
                           <button
                             key={player.id}
@@ -2034,45 +1967,16 @@ export default function FantasyTeamBuilderPage() {
                                   : "border-transparent hover:border-border hover:bg-muted/50"
                             }`}
                           >
-                            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
                               <img
-                                src={getPlayerImage(
-                                  player.id,
+                                src={getTeamLogo(
+                                  player.team_id,
                                 )}
-                                alt={
-                                  player.nickname
-                                }
-                                className="h-full w-full object-cover"
-                                onError={(
-                                  event,
-                                ) => {
-                                  event.currentTarget.onerror =
-                                    null;
-                                  event.currentTarget.src =
-                                    getTeamLogo(
-                                      player.team_id,
-                                    );
-                                  event.currentTarget.className =
-                                    "h-6 w-6 object-contain";
-                                }}
+                                alt={getTeamName(
+                                  player.team_id,
+                                )}
+                                className="h-6 w-6 object-contain"
                               />
-
-                              {flagSrc && (
-                                <img
-                                  src={flagSrc}
-                                  alt={
-                                    player.nationality ??
-                                    "Flag"
-                                  }
-                                  className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border border-border bg-background object-cover"
-                                  onError={(
-                                    event,
-                                  ) => {
-                                    event.currentTarget.style.display =
-                                      "none";
-                                  }}
-                                />
-                              )}
                             </div>
 
                             <div className="min-w-0 flex-1">
@@ -2161,11 +2065,6 @@ export default function FantasyTeamBuilderPage() {
                       captain ===
                       player.id;
 
-                    const flagSrc =
-                      getFlagImage(
-                        player.nationality,
-                      );
-
                     return (
                       <div
                         key={player.id}
@@ -2200,45 +2099,16 @@ export default function FantasyTeamBuilderPage() {
                               : "hover:border-primary/50"
                           }`}
                         >
-                          <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
+                          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
                             <img
-                              src={getPlayerImage(
-                                player.id,
+                              src={getTeamLogo(
+                                player.team_id,
                               )}
-                              alt={
-                                player.nickname
-                              }
-                              className="h-full w-full object-cover"
-                              onError={(
-                                event,
-                              ) => {
-                                event.currentTarget.onerror =
-                                  null;
-                                event.currentTarget.src =
-                                  getTeamLogo(
-                                    player.team_id,
-                                  );
-                                event.currentTarget.className =
-                                  "h-10 w-10 object-contain";
-                              }}
+                              alt={getTeamName(
+                                player.team_id,
+                              )}
+                              className="h-10 w-10 object-contain"
                             />
-
-                            {flagSrc && (
-                              <img
-                                src={flagSrc}
-                                alt={
-                                  player.nationality ??
-                                  "Flag"
-                                }
-                                className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full border border-border bg-background object-cover"
-                                onError={(
-                                  event,
-                                ) => {
-                                  event.currentTarget.style.display =
-                                    "none";
-                                }}
-                              />
-                            )}
                           </div>
 
                           <p
@@ -2424,12 +2294,6 @@ export default function FantasyTeamBuilderPage() {
           teamLogo={getTeamLogo(
             statsPlayer.team_id,
           )}
-          playerImage={getPlayerImage(
-            statsPlayer.id,
-          )}
-          flagImage={getFlagImage(
-            statsPlayer.nationality,
-          )}
           onClose={() =>
             setStatsPlayer(null)
           }
@@ -2449,8 +2313,6 @@ type PlayerStatsModalProps = {
   day: TournamentDay | null;
   teamName: string;
   teamLogo: string;
-  playerImage: string;
-  flagImage: string | null;
   onClose: () => void;
 };
 
@@ -2460,8 +2322,6 @@ function PlayerStatsModal({
   day,
   teamName,
   teamLogo,
-  playerImage,
-  flagImage,
   onClose,
 }: PlayerStatsModalProps) {
   const rooms =
@@ -2488,32 +2348,12 @@ function PlayerStatsModal({
         {/* HEADER */}
         <div className="flex items-start justify-between border-b border-border p-5 sm:p-6">
           <div className="flex min-w-0 items-center gap-4">
-            <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border bg-background sm:h-16 sm:w-16">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border bg-background sm:h-16 sm:w-16">
               <img
-                src={playerImage}
-                alt={player.nickname}
-                className="h-full w-full object-cover"
-                onError={(event) => {
-                  event.currentTarget.onerror =
-                    null;
-                  event.currentTarget.src =
-                    teamLogo;
-                  event.currentTarget.className =
-                    "h-10 w-10 object-contain sm:h-12 sm:w-12";
-                }}
+                src={teamLogo}
+                alt={teamName}
+                className="h-10 w-10 object-contain sm:h-12 sm:w-12"
               />
-
-              {flagImage && (
-                <img
-                  src={flagImage}
-                  alt="Nationality"
-                  className="absolute -bottom-0.5 -right-0.5 h-6 w-6 rounded-full border border-border bg-background object-cover"
-                  onError={(event) => {
-                    event.currentTarget.style.display =
-                      "none";
-                  }}
-                />
-              )}
             </div>
 
             <div className="min-w-0">
