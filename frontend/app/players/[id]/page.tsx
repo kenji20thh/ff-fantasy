@@ -276,6 +276,7 @@ export default function PlayerProfile() {
             <div className="relative shrink-0">
               <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted md:h-36 md:w-36">
                 <img
+                  src={`/players/${player.id}.png`}
                   alt={player.nickname}
                   className="h-full w-full object-cover"
                 />
