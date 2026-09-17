@@ -224,11 +224,11 @@ export default function PlayerProfile() {
     return (
       <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
         <Link
-          href="/teams"
+          href="/players"
           className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          Teams
+          Players
         </Link>
 
         <p className="mt-8 text-red-400">
