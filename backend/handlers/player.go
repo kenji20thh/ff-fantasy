@@ -15,10 +15,11 @@ type PlayerHandler struct {
 }
 
 type PlayerProfile struct {
-	ID         int    `json:"id"`
-	TeamID     int    `json:"team_id"`
-	Nickname   string `json:"nickname"`
-	PictureURL string `json:"picture_url"`
+	ID          int    `json:"id"`
+	TeamID      int    `json:"team_id"`
+	Nickname    string `json:"nickname"`
+	Nationality string `json:"nationality"`
+	PictureURL  string `json:"picture_url"`
 }
 
 type PlayerRoomStat struct {
@@ -79,14 +80,15 @@ func (h *PlayerHandler) GetPlayerStats(w http.ResponseWriter, r *http.Request) {
 
 	err = h.DB.QueryRow(
 		ctx,
-		`SELECT id, team_id, nickname, COALESCE(picture_url, '')
-		 FROM players
-		 WHERE id = $1`,
+		`SELECT id, team_id, nickname, nationality, COALESCE(picture_url, '')
+	 FROM players
+	 WHERE id = $1`,
 		playerID,
 	).Scan(
 		&player.ID,
 		&player.TeamID,
 		&player.Nickname,
+		&player.Nationality,
 		&player.PictureURL,
 	)
 

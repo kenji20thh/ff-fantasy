@@ -37,6 +37,20 @@ const PHASE_ORDER: Record<Phase, number> = {
 // 1st = 12, 2nd = 9, 3rd = 8, ... 10th = 1, 11th/12th = 0.
 const PLACEMENT_POINTS = [12, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0];
 
+const NATIONALITIES: Record<string, string> = {
+  MAR: "Morocco",
+  DZ: "Algeria",
+  EGY: "Egypt",
+  TUN: "Tunisia",
+};
+
+const NATIONALITY_FLAGS: Record<string, string> = {
+  MAR: "/flags/MAR.png",
+  DZ: "/flags/DZ.png",
+  EGY: "/flags/EGY.png",
+  TUN: "/flags/TUN.png",
+};
+
 function getPlacementPoints(placement: number): number {
   if (placement < 1) return 0;
 
@@ -280,6 +294,22 @@ export default function PlayerProfile() {
               <h1 className="mt-2 truncate text-3xl font-black tracking-tight md:text-5xl">
                 {player.nickname}
               </h1>
+
+              {player.nationality && (
+                <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                  {NATIONALITY_FLAGS[player.nationality] && (
+                    <img
+                      src={NATIONALITY_FLAGS[player.nationality]}
+                      alt={`${NATIONALITIES[player.nationality] ?? player.nationality} flag`}
+                      className="h-4 w-6 rounded-sm object-cover"
+                    />
+                  )}
+
+                  <span>
+                    {NATIONALITIES[player.nationality] ?? player.nationality}
+                  </span>
+                </div>
+              )}
 
               <div className="mt-4 flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-background p-1.5">
