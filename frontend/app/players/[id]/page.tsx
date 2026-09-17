@@ -1,8 +1,8 @@
-'use client'
+"use client";
 
-import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'next/navigation'
-import Link from 'next/link'
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 import {
   ArrowLeft,
   Crosshair,
@@ -13,128 +13,127 @@ import {
   Target,
   Trophy,
   Users,
-} from 'lucide-react'
+} from "lucide-react";
 
-import { api } from '@/lib/api'
-import { errorMessage } from '@/lib/types'
+import { api } from "@/lib/api";
+import { errorMessage } from "@/lib/types";
 import type {
   PlayerStatsResponse,
   PlayerDayStats,
   PlayerRoomStat,
   PlayerRanking,
-} from '@/lib/types'
+} from "@/lib/types";
 
-type Phase = 'league' | 'rush' | 'final' | 'unknown'
+type Phase = "league" | "rush" | "final" | "unknown";
 
 const PHASE_ORDER: Record<Phase, number> = {
   league: 0,
   rush: 1,
   final: 2,
   unknown: 99,
-}
+};
 
 // Placement points by finishing position.
 // 1st = 12, 2nd = 9, 3rd = 8, ... 10th = 1, 11th/12th = 0.
-const PLACEMENT_POINTS = [12, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0]
+const PLACEMENT_POINTS = [12, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0];
 
 function getPlacementPoints(placement: number): number {
-  if (placement < 1) return 0
+  if (placement < 1) return 0;
 
-  return PLACEMENT_POINTS[placement - 1] ?? 0
+  return PLACEMENT_POINTS[placement - 1] ?? 0;
 }
 
-function parseDayName(
-  name: string,
-): { phase: Phase; week?: number; day?: number } {
-  const league = name.match(/^week\s*(\d+)\s*day\s*(\d+)/i)
+function parseDayName(name: string): {
+  phase: Phase;
+  week?: number;
+  day?: number;
+} {
+  const league = name.match(/^week\s*(\d+)\s*day\s*(\d+)/i);
 
   if (league) {
     return {
-      phase: 'league',
+      phase: "league",
       week: Number(league[1]),
       day: Number(league[2]),
-    }
+    };
   }
 
-  const rush = name.match(/^rush\s*day\s*(\d+)/i)
+  const rush = name.match(/^rush\s*day\s*(\d+)/i);
 
   if (rush) {
     return {
-      phase: 'rush',
+      phase: "rush",
       day: Number(rush[1]),
-    }
+    };
   }
 
-  const final = name.match(/^(grand\s*)?final\s*day\s*(\d+)/i)
+  const final = name.match(/^(grand\s*)?final\s*day\s*(\d+)/i);
 
   if (final) {
     return {
-      phase: 'final',
+      phase: "final",
       day: Number(final[2]),
-    }
+    };
   }
 
   return {
-    phase: 'unknown',
-  }
+    phase: "unknown",
+  };
 }
 
 function sortDaysByWeekDay(list: PlayerDayStats[]) {
   return [...list].sort((a, b) => {
-    const pa = parseDayName(a.name)
-    const pb = parseDayName(b.name)
+    const pa = parseDayName(a.name);
+    const pb = parseDayName(b.name);
 
     if (PHASE_ORDER[pa.phase] !== PHASE_ORDER[pb.phase]) {
-      return PHASE_ORDER[pa.phase] - PHASE_ORDER[pb.phase]
+      return PHASE_ORDER[pa.phase] - PHASE_ORDER[pb.phase];
     }
 
-    const weekA = pa.week ?? 0
-    const weekB = pb.week ?? 0
+    const weekA = pa.week ?? 0;
+    const weekB = pb.week ?? 0;
 
     if (weekA !== weekB) {
-      return weekA - weekB
+      return weekA - weekB;
     }
 
-    return (pa.day ?? 0) - (pb.day ?? 0)
-  })
+    return (pa.day ?? 0) - (pb.day ?? 0);
+  });
 }
 
 export default function PlayerProfile() {
-  const { id } = useParams<{ id: string }>()
+  const { id } = useParams<{ id: string }>();
 
-  const [data, setData] = useState<PlayerStatsResponse | null>(null)
-  const [playerRankings, setPlayerRankings] = useState<PlayerRanking[]>([])
-  const [error, setError] = useState('')
+  const [data, setData] = useState<PlayerStatsResponse | null>(null);
+  const [playerRankings, setPlayerRankings] = useState<PlayerRanking[]>([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const playerId = Number(id)
+    const playerId = Number(id);
 
     if (!playerId) {
-      setError('Invalid player ID')
-      return
+      setError("Invalid player ID");
+      return;
     }
 
-    Promise.all([
-      api.playerStats(playerId),
-      api.playerRankings(),
-    ])
+    Promise.all([api.playerStats(playerId), api.playerRankings()])
       .then(([playerResponse, rankingsResponse]) => {
-        setData(playerResponse as PlayerStatsResponse)
+        setData(playerResponse as PlayerStatsResponse);
 
         setPlayerRankings(
           Array.isArray(rankingsResponse)
             ? (rankingsResponse as PlayerRanking[])
             : [],
-        )
+        );
       })
-      .catch(error => {
-        setError(errorMessage(error))
-      })
-  }, [id])
+      .catch((error) => {
+        setError(errorMessage(error));
+      });
+  }, [id]);
 
   const sortedDays = useMemo(() => {
-    return data ? sortDaysByWeekDay(data.days) : []
-  }, [data])
+    return data ? sortDaysByWeekDay(data.days) : [];
+  }, [data]);
 
   /*
    * Calculate tournament-wide room statistics.
@@ -150,51 +149,44 @@ export default function PlayerProfile() {
         placementPointsPerRoom: 0,
         averagePlacement: 0,
         booyahs: 0,
-      }
+      };
     }
 
-    const rooms = data.days.flatMap(day => day.rooms)
+    const rooms = data.days.flatMap((day) => day.rooms);
 
-    const roomsPlayed = rooms.length
+    const roomsPlayed = rooms.length;
 
     const placementPoints = rooms.reduce(
       (sum, room) => sum + getPlacementPoints(room.placement),
       0,
-    )
+    );
 
     const averagePlacement =
       roomsPlayed > 0
-        ? rooms.reduce((sum, room) => sum + room.placement, 0) /
-          roomsPlayed
-        : 0
+        ? rooms.reduce((sum, room) => sum + room.placement, 0) / roomsPlayed
+        : 0;
 
-    const booyahs = rooms.filter(room => room.placement === 1).length
+    const booyahs = rooms.filter((room) => room.placement === 1).length;
 
     return {
       roomsPlayed,
 
-      killsPerRoom:
-        roomsPlayed > 0 ? data.total.kills / roomsPlayed : 0,
+      killsPerRoom: roomsPlayed > 0 ? data.total.kills / roomsPlayed : 0,
 
-      assistsPerRoom:
-        roomsPlayed > 0 ? data.total.assists / roomsPlayed : 0,
+      assistsPerRoom: roomsPlayed > 0 ? data.total.assists / roomsPlayed : 0,
 
       firstBloodsPerRoom:
-        roomsPlayed > 0
-          ? data.total.first_blood / roomsPlayed
-          : 0,
+        roomsPlayed > 0 ? data.total.first_blood / roomsPlayed : 0,
 
       placementPoints,
 
       placementPointsPerRoom:
-        roomsPlayed > 0
-          ? placementPoints / roomsPlayed
-          : 0,
+        roomsPlayed > 0 ? placementPoints / roomsPlayed : 0,
 
       averagePlacement,
       booyahs,
-    }
-  }, [data])
+    };
+  }, [data]);
 
   /*
    * Find the current player's team and calculate
@@ -204,21 +196,21 @@ export default function PlayerProfile() {
    */
   const killParticipation = useMemo(() => {
     if (!data || !playerRankings.length) {
-      return null
+      return null;
     }
 
-    const teamId = data.player.team_id
+    const teamId = data.player.team_id;
 
     const teamKills = playerRankings
-      .filter(player => player.team_id === teamId)
-      .reduce((sum, player) => sum + player.kills, 0)
+      .filter((player) => player.team_id === teamId)
+      .reduce((sum, player) => sum + player.kills, 0);
 
     if (teamKills <= 0) {
-      return null
+      return null;
     }
 
-    return (data.total.kills / teamKills) * 100
-  }, [data, playerRankings])
+    return (data.total.kills / teamKills) * 100;
+  }, [data, playerRankings]);
 
   if (error) {
     return (
@@ -231,24 +223,20 @@ export default function PlayerProfile() {
           Players
         </Link>
 
-        <p className="mt-8 text-red-400">
-          {error}
-        </p>
+        <p className="mt-8 text-red-400">{error}</p>
       </main>
-    )
+    );
   }
 
   if (!data) {
     return (
       <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
-        <p className="text-muted-foreground">
-          Loading player...
-        </p>
+        <p className="text-muted-foreground">Loading player...</p>
       </main>
-    )
+    );
   }
 
-  const { player, total } = data
+  const { player, total } = data;
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-5 py-10">
@@ -281,11 +269,6 @@ export default function PlayerProfile() {
                   className="h-full w-full object-cover"
                 />
               </div>
-
-              {/* Player ID badge */}
-              <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-border bg-background px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                #{player.id}
-              </span>
             </div>
 
             {/* Name + team */}
@@ -317,7 +300,9 @@ export default function PlayerProfile() {
                   </p>
 
                   <p className="font-bold">
-                    Team #{player.team_id}
+                    {playerRankings.find(
+                      (ranking) => ranking.player_id === player.id,
+                    )?.team_name ?? `Team #${player.team_id}`}
                   </p>
                 </div>
               </div>
@@ -327,9 +312,7 @@ export default function PlayerProfile() {
             <div className="shrink-0 rounded-xl border border-border bg-background/70 px-6 py-5 text-center md:min-w-36">
               <Trophy className="mx-auto h-5 w-5 text-primary" />
 
-              <p className="mt-2 text-3xl font-black">
-                {total.points}
-              </p>
+              <p className="mt-2 text-3xl font-black">{total.points}</p>
 
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Total Points
@@ -354,9 +337,7 @@ export default function PlayerProfile() {
             <HeroStat
               icon={<Medal className="h-4 w-4" />}
               label="Placement Pts / Room"
-              value={formatDecimal(
-                playerMetrics.placementPointsPerRoom,
-              )}
+              value={formatDecimal(playerMetrics.placementPointsPerRoom)}
             />
 
             <HeroStat
@@ -371,41 +352,30 @@ export default function PlayerProfile() {
               value={
                 killParticipation !== null
                   ? `${formatDecimal(killParticipation)}%`
-                  : '—'
+                  : "—"
               }
             />
           </div>
 
           {/* Secondary stats */}
           <div className="grid grid-cols-2 border-t border-border md:grid-cols-5">
-            <MiniStat
-              label="Assists"
-              value={total.assists}
-            />
+            <MiniStat label="Assists" value={total.assists} />
 
             <MiniStat
               label="Assists / Room"
-              value={formatDecimal(
-                playerMetrics.assistsPerRoom,
-              )}
+              value={formatDecimal(playerMetrics.assistsPerRoom)}
             />
 
-            <MiniStat
-              label="First Bloods"
-              value={total.first_blood}
-            />
+            <MiniStat label="First Bloods" value={total.first_blood} />
 
-            <MiniStat
-              label="Booyahs"
-              value={playerMetrics.booyahs}
-            />
+            <MiniStat label="Booyahs" value={playerMetrics.booyahs} />
 
             <MiniStat
               label="Avg Placement"
               value={
                 playerMetrics.roomsPlayed > 0
                   ? formatDecimal(playerMetrics.averagePlacement)
-                  : '—'
+                  : "—"
               }
             />
           </div>
@@ -464,11 +434,8 @@ export default function PlayerProfile() {
         </div>
 
         <div className="mt-6 space-y-10">
-          {sortedDays.map(day => (
-            <DaySection
-              key={day.id}
-              day={day}
-            />
+          {sortedDays.map((day) => (
+            <DaySection key={day.id} day={day} />
           ))}
         </div>
 
@@ -481,7 +448,7 @@ export default function PlayerProfile() {
         )}
       </section>
     </main>
-  )
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -493,9 +460,9 @@ function HeroStat({
   label,
   value,
 }: {
-  icon: React.ReactNode
-  label: string
-  value: number | string
+  icon: React.ReactNode;
+  label: string;
+  value: number | string;
 }) {
   return (
     <div className="border-r border-border p-5 last:border-r-0">
@@ -507,51 +474,35 @@ function HeroStat({
         </p>
       </div>
 
-      <p className="mt-2 text-2xl font-black md:text-3xl">
-        {value}
-      </p>
+      <p className="mt-2 text-2xl font-black md:text-3xl">{value}</p>
     </div>
-  )
+  );
 }
 
-function MiniStat({
-  label,
-  value,
-}: {
-  label: string
-  value: number | string
-}) {
+function MiniStat({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="border-r border-border p-4 last:border-r-0">
       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
         {label}
       </p>
 
-      <p className="mt-1 text-lg font-bold">
-        {value}
-      </p>
+      <p className="mt-1 text-lg font-bold">{value}</p>
     </div>
-  )
+  );
 }
 
-function DaySection({
-  day,
-}: {
-  day: PlayerDayStats
-}) {
+function DaySection({ day }: { day: PlayerDayStats }) {
   const placementPoints = day.rooms.reduce(
     (sum, room) => sum + getPlacementPoints(room.placement),
     0,
-  )
+  );
 
   return (
     <section className="border-t border-border pt-6">
       {/* Day header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-xl font-black">
-            {day.name}
-          </h3>
+          <h3 className="text-xl font-black">{day.name}</h3>
 
           <p className="mt-1 text-sm text-muted-foreground">
             {day.rooms.length} rooms · {placementPoints} placement points
@@ -559,9 +510,7 @@ function DaySection({
         </div>
 
         <div className="rounded-lg border border-border bg-card px-4 py-2 text-right">
-          <p className="text-lg font-black">
-            {day.total.points}
-          </p>
+          <p className="text-lg font-black">{day.total.points}</p>
 
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             Day Points
@@ -571,11 +520,8 @@ function DaySection({
 
       {/* Rooms */}
       <div className="mt-5 space-y-3">
-        {day.rooms.map(room => (
-          <RoomCard
-            key={room.room_id}
-            room={room}
-          />
+        {day.rooms.map((room) => (
+          <RoomCard key={room.room_id} room={room} />
         ))}
       </div>
 
@@ -592,41 +538,21 @@ function DaySection({
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
-          <StatCard
-            label="Kills"
-            value={day.total.kills}
-            compact
-          />
+          <StatCard label="Kills" value={day.total.kills} compact />
 
-          <StatCard
-            label="Assists"
-            value={day.total.assists}
-            compact
-          />
+          <StatCard label="Assists" value={day.total.assists} compact />
 
-          <StatCard
-            label="First Blood"
-            value={day.total.first_blood}
-            compact
-          />
+          <StatCard label="First Blood" value={day.total.first_blood} compact />
 
-          <StatCard
-            label="Points"
-            value={day.total.points}
-            compact
-          />
+          <StatCard label="Points" value={day.total.points} compact />
         </div>
       </div>
     </section>
-  )
+  );
 }
 
-function RoomCard({
-  room,
-}: {
-  room: PlayerRoomStat
-}) {
-  const placementPoints = getPlacementPoints(room.placement)
+function RoomCard({ room }: { room: PlayerRoomStat }) {
+  const placementPoints = getPlacementPoints(room.placement);
 
   return (
     <div className="group flex items-center justify-between rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40">
@@ -638,30 +564,20 @@ function RoomCard({
               Place
             </p>
 
-            <p className="text-lg font-black leading-none">
-              {room.placement}
-            </p>
+            <p className="text-lg font-black leading-none">{room.placement}</p>
           </div>
         </div>
 
         <div className="min-w-0">
-          <p className="font-bold">
-            Room {room.room_number}
-          </p>
+          <p className="font-bold">Room {room.room_number}</p>
 
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            <span>
-              {room.kills} kills
-            </span>
+            <span>{room.kills} kills</span>
 
-            <span>
-              {room.assists} assists
-            </span>
+            <span>{room.assists} assists</span>
 
             {room.first_blood && (
-              <span className="font-semibold text-primary">
-                First Blood
-              </span>
+              <span className="font-semibold text-primary">First Blood</span>
             )}
           </div>
         </div>
@@ -669,9 +585,7 @@ function RoomCard({
 
       {/* Room points */}
       <div className="ml-4 shrink-0 text-right">
-        <p className="text-lg font-black">
-          {room.points}
-        </p>
+        <p className="text-lg font-black">{room.points}</p>
 
         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
           points
@@ -682,7 +596,7 @@ function RoomCard({
         </p>
       </div>
     </div>
-  )
+  );
 }
 
 function StatCard({
@@ -691,15 +605,15 @@ function StatCard({
   value,
   compact = false,
 }: {
-  icon?: React.ReactNode
-  label: string
-  value: number | string
-  compact?: boolean
+  icon?: React.ReactNode;
+  label: string;
+  value: number | string;
+  compact?: boolean;
 }) {
   return (
     <div
       className={`rounded-xl border border-border bg-card ${
-        compact ? 'p-4' : 'p-5'
+        compact ? "p-4" : "p-5"
       }`}
     >
       <div className="flex items-center gap-2 text-muted-foreground">
@@ -710,19 +624,13 @@ function StatCard({
         </p>
       </div>
 
-      <p
-        className={`mt-2 font-black ${
-          compact
-            ? 'text-xl'
-            : 'text-2xl'
-        }`}
-      >
+      <p className={`mt-2 font-black ${compact ? "text-xl" : "text-2xl"}`}>
         {value}
       </p>
     </div>
-  )
+  );
 }
 
 function formatDecimal(value: number): string {
-  return value.toFixed(2)
+  return value.toFixed(2);
 }
