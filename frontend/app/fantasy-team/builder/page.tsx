@@ -400,6 +400,12 @@ export default function FantasyTeamBuilderPage() {
     return `/logos/${teamID}.png`;
   }
 
+  function getPlayerPhoto(
+    playerID: number,
+  ) {
+    return `/players/${playerID}.png`;
+  }
+
   function formatDeadline(
     day: TournamentDay,
   ) {
@@ -1543,13 +1549,11 @@ export default function FantasyTeamBuilderPage() {
                       >
                         <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
                           <img
-                            src={getTeamLogo(
-                              player.team_id,
+                            src={getPlayerPhoto(
+                              player.id,
                             )}
-                            alt={getTeamName(
-                              player.team_id,
-                            )}
-                            className="h-10 w-10 object-contain"
+                            alt={player.nickname}
+                            className="h-full w-full object-cover"
                           />
                         </div>
 
