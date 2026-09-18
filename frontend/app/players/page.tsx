@@ -25,17 +25,35 @@ function parseDayName(name: string): {
 } {
   const league = name.match(/^week\s*(\d+)\s*day\s*(\d+)/i);
   if (league) {
-    return { phase: "league", week: Number(league[1]), day: Number(league[2]) };
+    return {
+      phase: "league",
+      week: Number(league[1]),
+      day: Number(league[2]),
+    };
   }
 
-  const rush = name.match(/^rush\s*day\s*(\d+)/i);
+  const rush = name.match(/^point\s*rush(?:\s*day\s*(\d+))?$/i);
   if (rush) {
-    return { phase: "rush", day: Number(rush[1]) };
+    return {
+      phase: "rush",
+      day: rush[1] ? Number(rush[1]) : 1,
+    };
+  }
+
+  const oldRush = name.match(/^rush\s*day\s*(\d+)/i);
+  if (oldRush) {
+    return {
+      phase: "rush",
+      day: Number(oldRush[1]),
+    };
   }
 
   const final = name.match(/^(grand\s*)?final\s*day\s*(\d+)/i);
   if (final) {
-    return { phase: "final", day: Number(final[1]) };
+    return {
+      phase: "final",
+      day: Number(final[2]),
+    };
   }
 
   return { phase: "unknown" };
