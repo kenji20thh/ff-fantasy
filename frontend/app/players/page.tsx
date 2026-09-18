@@ -217,7 +217,7 @@ function PlayersContent() {
   // Default to the first available week once League Phase data loads.
   useEffect(() => {
     if (phase === "league" && week === null && grouped.league.size > 0) {
-      setWeek([...grouped.league.keys()][0]);
+      setWeek("all");
     }
   }, [phase, week, grouped]);
 
