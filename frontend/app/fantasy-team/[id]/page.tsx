@@ -517,6 +517,22 @@ export default function FantasyTeamBuilderPage() {
     return `/logos/${teamID}.png`;
   }
 
+  function getNationalityFlag(
+    nationality?: string,
+  ) {
+    if (!nationality) {
+      return null;
+    }
+
+    return `/flags/${nationality}.png`;
+  }
+
+  function getPlayerPhoto(
+    playerID: number,
+  ) {
+    return `/players/${playerID}.png`;
+  }
+
   function formatDeadline(
     day: TournamentDay,
   ) {
@@ -1463,16 +1479,42 @@ export default function FantasyTeamBuilderPage() {
                               : "border-border bg-muted/10"
                           } cursor-pointer hover:border-primary/50 hover:bg-primary/5`}
                         >
-                          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
-                            <img
-                              src={getTeamLogo(
-                                player.team_id,
-                              )}
-                              alt={getTeamName(
-                                player.team_id,
-                              )}
-                              className="h-11 w-11 object-contain"
-                            />
+                          <div className="relative h-16 w-16">
+                            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
+                              <img
+                                src={getPlayerPhoto(
+                                  player.id,
+                                )}
+                                alt={player.nickname}
+                                onError={(
+                                  event,
+                                ) => {
+                                  event.currentTarget.onerror =
+                                    null;
+                                  event.currentTarget.src =
+                                    getTeamLogo(
+                                      player.team_id,
+                                    );
+                                }}
+                                className="h-full w-full object-cover"
+                              />
+                            </div>
+
+                            {getNationalityFlag(
+                              player.nationality,
+                            ) && (
+                              <img
+                                src={
+                                  getNationalityFlag(
+                                    player.nationality,
+                                  )!
+                                }
+                                alt={
+                                  player.nationality
+                                }
+                                className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full border border-border object-cover shadow"
+                              />
+                            )}
                           </div>
 
                           <p
@@ -1967,16 +2009,34 @@ export default function FantasyTeamBuilderPage() {
                                   : "border-transparent hover:border-border hover:bg-muted/50"
                             }`}
                           >
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
-                              <img
-                                src={getTeamLogo(
-                                  player.team_id,
-                                )}
-                                alt={getTeamName(
-                                  player.team_id,
-                                )}
-                                className="h-6 w-6 object-contain"
-                              />
+                            <div className="relative h-9 w-9 shrink-0">
+                              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
+                                <img
+                                  src={getTeamLogo(
+                                    player.team_id,
+                                  )}
+                                  alt={getTeamName(
+                                    player.team_id,
+                                  )}
+                                  className="h-6 w-6 object-contain"
+                                />
+                              </div>
+
+                              {getNationalityFlag(
+                                player.nationality,
+                              ) && (
+                                <img
+                                  src={
+                                    getNationalityFlag(
+                                      player.nationality,
+                                    )!
+                                  }
+                                  alt={
+                                    player.nationality
+                                  }
+                                  className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border border-border object-cover shadow"
+                                />
+                              )}
                             </div>
 
                             <div className="min-w-0 flex-1">
@@ -2099,16 +2159,42 @@ export default function FantasyTeamBuilderPage() {
                               : "hover:border-primary/50"
                           }`}
                         >
-                          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
-                            <img
-                              src={getTeamLogo(
-                                player.team_id,
-                              )}
-                              alt={getTeamName(
-                                player.team_id,
-                              )}
-                              className="h-10 w-10 object-contain"
-                            />
+                          <div className="relative h-14 w-14">
+                            <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
+                              <img
+                                src={getPlayerPhoto(
+                                  player.id,
+                                )}
+                                alt={player.nickname}
+                                onError={(
+                                  event,
+                                ) => {
+                                  event.currentTarget.onerror =
+                                    null;
+                                  event.currentTarget.src =
+                                    getTeamLogo(
+                                      player.team_id,
+                                    );
+                                }}
+                                className="h-full w-full object-cover"
+                              />
+                            </div>
+
+                            {getNationalityFlag(
+                              player.nationality,
+                            ) && (
+                              <img
+                                src={
+                                  getNationalityFlag(
+                                    player.nationality,
+                                  )!
+                                }
+                                alt={
+                                  player.nationality
+                                }
+                                className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full border border-border object-cover shadow"
+                              />
+                            )}
                           </div>
 
                           <p
