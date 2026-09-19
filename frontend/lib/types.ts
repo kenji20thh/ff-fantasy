@@ -90,7 +90,7 @@ export type ApiError = Error & {
 };
 
 export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "https://ff-fantasy.onrender.com";
+  process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export function asArray<T>(value: unknown): T[] {
   if (Array.isArray(value)) return value as T[];
