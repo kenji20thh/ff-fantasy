@@ -131,7 +131,7 @@ export default function TeamDetail() {
         <div className="mb-4 flex items-end justify-between">
           <div>
             <p className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
-              Starting roster
+              Roster
             </p>
             <h2 className="mt-1 text-xl font-black uppercase">
               Players
