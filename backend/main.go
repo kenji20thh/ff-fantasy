@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"ff-fantasy/database"
 	"ff-fantasy/handlers"
@@ -87,11 +88,13 @@ func main() {
 		DB: conn,
 	}
 
-	http.HandleFunc("/api/teams", teamHandler.GetTeams)
+	responseCache := handlers.NewResponseCache()
+
+	http.HandleFunc("/api/teams", handlers.CacheGET(responseCache, 15*time.Second, teamHandler.GetTeams))
 	http.HandleFunc("/api/teams/{id}/players", teamHandler.GetPlayers)
 	http.HandleFunc("/api/players/{id}/stats", playerHandler.GetPlayerStats)
 	http.HandleFunc("/api/player-rankings", playerHandler.GetPlayerRankings)
-	http.HandleFunc("/api/placement", placementHandler.GetPlacement)
+	http.HandleFunc("/api/placement", handlers.CacheGET(responseCache, 15*time.Second, placementHandler.GetPlacement))
 
 	http.HandleFunc("/api/fantasy-teams", fantasyTeamHandler.CreateFantasyTeam)
 	http.HandleFunc("/api/fantasy-teams/mine", fantasyTeamHandler.GetMyFantasyTeam)
@@ -101,7 +104,7 @@ func main() {
 	http.HandleFunc("/api/fantasy-teams/{id}/points", fantasyTeamHandler.GetFantasyTeamPoints)
 
 	http.HandleFunc("/api/rooms/{id}/stats", teamHandler.GetRoomStats)
-	http.HandleFunc("/api/leaderboard", leaderboardHandler.GetLeaderboard)
+	http.HandleFunc("/api/leaderboard", handlers.CacheGET(responseCache, 15*time.Second, leaderboardHandler.GetLeaderboard))
 	http.HandleFunc("/api/teams/{id}/stats", teamHandler.GetTeamStats)
 
 	http.HandleFunc("/api/register", authHandler.Register)
@@ -113,7 +116,7 @@ func main() {
 
 	http.HandleFunc(
 		"/api/tournament-days",
-		adminTournamentDayHandler.GetTournamentDays,
+		handlers.CacheGET(responseCache, 15*time.Second, adminTournamentDayHandler.GetTournamentDays),
 	)
 
 	http.HandleFunc(
