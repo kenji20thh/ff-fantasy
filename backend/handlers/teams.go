@@ -185,16 +185,16 @@ func (h *TeamHandler) GetTeamStats(w http.ResponseWriter, r *http.Request) {
 	playerRows, err := h.DB.Query(
 		ctx,
 		`SELECT
-			p.id,
-			p.nickname,
-			p.picture_url,
-			COALESCE(SUM(prs.kills), 0)::int AS total_kills
-		 FROM players p
-		 LEFT JOIN player_room_stats prs
-			ON prs.player_id = p.id
-		 WHERE p.team_id = $1
-		 GROUP BY p.id, p.nickname, p.picture_url
-		 ORDER BY total_kills DESC, p.nickname ASC`,
+		p.id,
+		p.nickname,
+		COALESCE(p.picture_url, ''),
+		COALESCE(SUM(prs.kills), 0)::int AS total_kills
+	 FROM players p
+	 LEFT JOIN player_room_stats prs
+		ON prs.player_id = p.id
+	 WHERE p.team_id = $1
+	 GROUP BY p.id, p.nickname, p.picture_url
+	 ORDER BY total_kills DESC, p.nickname ASC`,
 		teamID,
 	)
 
