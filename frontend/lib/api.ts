@@ -78,6 +78,8 @@ export const api = {
 
   players: (id: number) => apiFetch(`/api/teams/${id}/players`),
 
+  teamStats: (id: number) => apiFetch(`/api/teams/${id}/stats`),
+
   playerStats: (id: number) => apiFetch(`/api/players/${id}/stats`),
 
   leaderboard: (dayId?: number) =>
@@ -167,4 +169,5 @@ export const api = {
     method: "POST",
     body: JSON.stringify(body),
   }),
+
 };

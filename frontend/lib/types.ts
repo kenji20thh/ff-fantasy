@@ -13,6 +13,25 @@ export type Team = {
   logo_url?: string;
 };
 
+export type TeamPlayerKills = {
+  id: number;
+  nickname: string;
+  picture_url?: string;
+  total_kills: number;
+};
+
+export type TeamMapStats = {
+  map_type: string;
+  rooms_played: number;
+  avg_kills: number;
+  avg_placement: number;
+};
+
+export type TeamStatsResponse = {
+  players: TeamPlayerKills[];
+  maps: TeamMapStats[];
+};
+
 export type Player = {
   id: number;
   team_id: number;

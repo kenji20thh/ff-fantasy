@@ -102,6 +102,7 @@ func main() {
 
 	http.HandleFunc("/api/rooms/{id}/stats", teamHandler.GetRoomStats)
 	http.HandleFunc("/api/leaderboard", leaderboardHandler.GetLeaderboard)
+	http.HandleFunc("/api/teams/{id}/stats", teamHandler.GetTeamStats)
 
 	http.HandleFunc("/api/register", authHandler.Register)
 	http.HandleFunc("/api/login", authHandler.Login)
